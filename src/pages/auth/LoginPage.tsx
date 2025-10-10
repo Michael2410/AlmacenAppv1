@@ -19,9 +19,9 @@ export default function LoginPage() {
   const onFinish = async (v: any) => {
     setLoading(true);
     try {
-  const useMocks = (import.meta as any).env?.VITE_USE_MOCKS === 'true';
-  if (useMocks) {
-        const user = { id: 'u1', nombres: 'Usuario Demo', email: v.email, roleId: PREDEFINED_ROLES.ENCARGADO_ALMACEN.id };
+      const useMocks = (import.meta as any).env?.VITE_USE_MOCKS === 'true';
+      if (useMocks) {
+        const user = { id: 'u1', nombres: 'Usuario Demo', email: v.email, roleId: PREDEFINED_ROLES.ADMIN.id };
         const token = 'demo-token';
         const roles = Object.values(PREDEFINED_ROLES);
         login(user as any, token, roles);
@@ -30,6 +30,7 @@ export default function LoginPage() {
         const { token, user, roles } = await loginAndSetToken(v.email, v.password);
         if (!token) throw new Error('Token no recibido');
         login(user as any, token, roles?.length ? roles : Object.values(PREDEFINED_ROLES));
+        setToken(token); // Asegurar que el token store también se actualice
       }
       message.success('Bienvenido');
       navigate('/dashboard', { replace: true });

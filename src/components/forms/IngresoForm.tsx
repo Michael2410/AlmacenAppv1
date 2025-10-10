@@ -2,7 +2,7 @@ import { Button, DatePicker, Form, Input, InputNumber, Select, message } from 'a
 import dayjs from 'dayjs';
 import { z } from 'zod';
 import type { Ingreso } from '../../types/ingreso';
-import { useCreateIngreso, useProductos, useProveedores, useReferencias } from '../../lib/api';
+import { useCreateIngreso, useProductos, useProveedores } from '../../lib/api';
 
 const schema = z.object({
   fechaVencimiento: z.string().optional(),
@@ -11,10 +11,7 @@ const schema = z.object({
   serieFactura: z.string().optional(),
   marca: z.string().optional(),
   cantidad: z.number().positive(),
-  unidad: z.string(),
   precio: z.number().min(0),
-  areaId: z.string(),
-  ubicacionId: z.string(),
   proveedorId: z.string(),
   productoId: z.string(),
 });
@@ -23,8 +20,20 @@ export default function IngresoForm({ onSuccess }: { onSuccess?: (ing: Ingreso) 
   const [form] = Form.useForm();
   const { data: prodRes } = useProductos();
   const { data: provRes } = useProveedores();
-  const { data: refRes } = useReferencias();
   const { mutateAsync, isPending } = useCreateIngreso();
+
+  const productos = prodRes?.data ?? [];
+  const selectedProductId = Form.useWatch('productoId', form);
+  const selectedProduct = productos.find(p => p.id === selectedProductId);
+
+  const onProductoChange = (productoId: string) => {
+    const producto = productos.find(p => p.id === productoId);
+    if (producto?.marca) {
+      form.setFieldsValue({ marca: producto.marca });
+    } else {
+      form.setFieldsValue({ marca: null });
+    }
+  };
 
   const onFinish = async (values: any) => {
     const parsed = schema.safeParse({
@@ -51,29 +60,43 @@ export default function IngresoForm({ onSuccess }: { onSuccess?: (ing: Ingreso) 
 
   return (
     <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ fechaIngreso: dayjs() }}>
-      <Form.Item name="marca" label="Marca">
-        <Input placeholder="Marca del producto (opcional)" />
+      <Form.Item name="marca" hidden>
+        <Input />
       </Form.Item>
       <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
-        <Select options={prodRes?.data.map(p => ({ label: p.nombre, value: p.id }))} />
+        <Select 
+          showSearch
+          placeholder="Buscar producto por nombre o marca..."
+          optionFilterProp="children"
+          filterOption={(input, option) => {
+            const searchText = input.toLowerCase();
+            const label = (option?.label ?? '').toLowerCase();
+            return label.includes(searchText);
+          }}
+          options={productos.map(p => ({ 
+            label: `${p.nombre}${p.marca ? ` - ${p.marca}` : ''}`, 
+            value: p.id,
+            searchText: `${p.nombre} ${p.marca || ''}`.toLowerCase()
+          }))} 
+          onChange={onProductoChange}
+          style={{ width: '100%' }}
+        />
       </Form.Item>
+      {selectedProduct?.marca && (
+        <div className="mb-4 p-2 bg-blue-50 border border-blue-200 rounded">
+          <small className="text-blue-600">
+            <strong>Marca:</strong> {selectedProduct.marca} (detectada automáticamente)
+          </small>
+        </div>
+      )}
       <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
         <Select options={provRes?.data.map(p => ({ label: p.nombre, value: p.id }))} />
       </Form.Item>
       <Form.Item name="cantidad" label="Cantidad" rules={[{ required: true, type: 'number', min: 0.000001 }]}>
         <InputNumber className="w-full" />
       </Form.Item>
-      <Form.Item name="unidad" label="Unidad" rules={[{ required: true }]}>
-        <Select options={["UNIDAD","CAJA","PAQUETE","KG","G","L","ML","M","CM"].map(u => ({ value: u, label: u }))} />
-      </Form.Item>
       <Form.Item name="precio" label="Precio" rules={[{ required: true, type: 'number', min: 0 }]}>
         <InputNumber className="w-full" prefix="S/ " />
-      </Form.Item>
-      <Form.Item name="areaId" label="Área" rules={[{ required: true }]}>
-        <Select options={refRes?.data.areas.map(a => ({ label: a.nombre, value: a.id }))} />
-      </Form.Item>
-      <Form.Item name="ubicacionId" label="Ubicación" rules={[{ required: true }]}>
-        <Select options={refRes?.data.ubicaciones.map(u => ({ label: u.nombre, value: u.id }))} />
       </Form.Item>
       <Form.Item name="fechaIngreso" label="Fecha Ingreso" rules={[{ required: true }]}>
         <DatePicker className="w-full" />

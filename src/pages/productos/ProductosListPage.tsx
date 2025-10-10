@@ -1,11 +1,12 @@
-import { Button, Form, Input, Modal, Select, Switch, Table, Space } from 'antd';
+import { Button, Form, Input, Modal, Select, Switch, Table, Space, message } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
-import { useProductos, useCreateProducto, useUpdateProducto, useRemoveProducto } from '../../lib/api';
+import { useProductos, useCreateProducto, useUpdateProducto, useRemoveProducto, useReferencias } from '../../lib/api';
 import { useState } from 'react';
 
 export default function ProductosListPage() {
   const { data } = useProductos();
+  const { data: refRes } = useReferencias();
   const { mutateAsync: create } = useCreateProducto();
   const { mutateAsync: update } = useUpdateProducto();
   const { mutateAsync: remove } = useRemoveProducto();
@@ -13,6 +14,12 @@ export default function ProductosListPage() {
   const [form] = Form.useForm();
   const [editing, setEditing] = useState<any>(null);
   const rows = data?.data ?? [];
+  const referencias = refRes?.data;
+  const areas = referencias?.areas ?? [];
+  const ubicaciones = referencias?.ubicaciones ?? [];
+  
+  const getAreaName = (areaId: string) => areas.find(a => a.id === areaId)?.nombre || areaId;
+  const getUbicacionName = (ubicacionId: string) => ubicaciones.find(u => u.id === ubicacionId)?.nombre || ubicacionId;
   const textFilter = (dataIndex: string, label: string): ColumnType<any> => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
       <div className="p-2">
@@ -37,9 +44,20 @@ export default function ProductosListPage() {
 
   const columns: ColumnsType<any> = [
     { title: 'Nombre', dataIndex: 'nombre', ...textFilter('nombre', 'nombre') },
+    { title: 'Marca', dataIndex: 'marca', ...textFilter('marca', 'marca') },
     { title: 'Unidad', dataIndex: 'unidad', ...textFilter('unidad', 'unidad') },
-    { title: 'Área', dataIndex: 'areaId', ...textFilter('areaId', 'área') },
-    { title: 'Ubicación', dataIndex: 'ubicacionId', ...textFilter('ubicacionId', 'ubicación') },
+    { 
+      title: 'Área', 
+      dataIndex: 'areaId', 
+      render: (areaId: string) => getAreaName(areaId),
+      ...textFilter('areaId', 'área') 
+    },
+    { 
+      title: 'Ubicación', 
+      dataIndex: 'ubicacionId', 
+      render: (ubicacionId: string) => getUbicacionName(ubicacionId),
+      ...textFilter('ubicacionId', 'ubicación') 
+    },
     { title: 'Activo', dataIndex: 'activo', render: (v: any) => (v ? 'Sí' : 'No'), filters: [{ text: 'Sí', value: true }, { text: 'No', value: false }], onFilter: (v, r) => r.activo === v },
     { title: 'Acciones', render: (_: any, r: any) => (
       <div className="flex gap-2">
@@ -54,22 +72,36 @@ export default function ProductosListPage() {
       <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
 
       <Modal title={editing ? 'Editar Producto' : 'Nuevo Producto'} open={open} onOk={async () => {
-        const v = await form.validateFields();
-        if (editing) await update({ id: editing.id, data: v }); else await create(v);
-        setOpen(false); setEditing(null); form.resetFields();
+        try {
+          const v = await form.validateFields();
+          if (editing) {
+            await update({ id: editing.id, data: v });
+            message.success('Producto actualizado');
+          } else {
+            await create(v);
+            message.success('Producto creado');
+          }
+          setOpen(false); setEditing(null); form.resetFields();
+        } catch (e: any) {
+          const msg = e?.response?.data?.message || 'Error al guardar el producto';
+          message.error(msg);
+        }
       }} onCancel={() => { setOpen(false); setEditing(null); }}>
         <Form form={form} layout="vertical" initialValues={{ activo: true }}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="marca" label="Marca">
+            <Input placeholder="Marca del producto (opcional)" />
+          </Form.Item>
           <Form.Item name="unidad" label="Unidad" rules={[{ required: true }]}>
             <Select options={["UNIDAD","CAJA","PAQUETE","KG","G","L","ML","M","CM"].map(u => ({ value: u, label: u }))} />
           </Form.Item>
           <Form.Item name="areaId" label="Área" rules={[{ required: true }]}>
-            <Input />
+            <Select options={refRes?.data.areas.map(a => ({ label: a.nombre, value: a.id }))} />
           </Form.Item>
           <Form.Item name="ubicacionId" label="Ubicación" rules={[{ required: true }]}>
-            <Input />
+            <Select options={refRes?.data.ubicaciones.map(u => ({ label: u.nombre, value: u.id }))} />
           </Form.Item>
           <Form.Item name="activo" label="Activo" valuePropName="checked">
             <Switch />

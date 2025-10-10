@@ -26,6 +26,7 @@ export interface Producto {
   id: ID;
   nombre: string;
   alias?: string;
+  marca?: string;
   unidad: UnidadMedida;
   areaId: ID;
   ubicacionId: ID;

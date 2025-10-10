@@ -6,7 +6,8 @@ import AlmacenGeneralPage from './AlmacenGeneralPage';
 import { useSearchParams } from 'react-router-dom';
 
 export default function InventarioPage() {
-  const isAdmin = useAuthStore(s => s.user?.roleId === 'role-encargado');
+  const hasPermission = useAuthStore(s => s.hasPermission);
+  const isAdmin = hasPermission(['inventory.viewAll']);
   const [sp, setSp] = useSearchParams();
   const initialView = useMemo<'mio' | 'general'>(() => {
     const v = sp.get('view');
@@ -16,6 +17,12 @@ export default function InventarioPage() {
   const [view, setView] = useState<'mio' | 'general'>(initialView);
   useEffect(() => { setView(initialView); }, [initialView]);
   const showSwitcher = isAdmin;
+  
+  // Para usuarios sin permisos de ver todo, mostrar solo su inventario
+  if (!isAdmin) {
+    return <MiInventarioPage />;
+  }
+  
   return (
     <div className="space-y-3">
       {showSwitcher && (
@@ -25,8 +32,8 @@ export default function InventarioPage() {
           onChange={(val) => { setView(val as any); setSp(prev => { const p = new URLSearchParams(prev); p.set('view', String(val)); return p; }); }}
         />
       )}
-      {(!showSwitcher || view === 'mio') && <MiInventarioPage />}
-      {showSwitcher && view === 'general' && <AlmacenGeneralPage />}
+      {view === 'mio' && <MiInventarioPage />}
+      {view === 'general' && <AlmacenGeneralPage />}
     </div>
   );
 }

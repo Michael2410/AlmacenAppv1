@@ -1,18 +1,52 @@
-import { DatePicker, Flex, Select, Table } from 'antd';
+import { DatePicker, Flex, Table, Input, Button } from 'antd';
+import { ClearOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import ExportButton from '../../components/ExportButton';
-import { useIngresos, useProveedores } from '../../lib/api';
+import { useIngresos } from '../../lib/api';
+import { useState, useMemo } from 'react';
 
 export default function IngresosListPage() {
   const { data } = useIngresos();
-  const { data: prov } = useProveedores();
+  const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs()]);
+  
   const rows = data?.data ?? [];
-  const marcaFilters = Array.from(new Set(rows.map((r: any) => r.marca).filter(Boolean))).map((m) => ({ text: m, value: m }));
+  
+  // Filtrar por búsqueda global y rango de fechas
+  const filteredRows = useMemo(() => {
+    let filtered = rows;
+    
+    // Filtro por texto de búsqueda
+    if (searchText) {
+      const search = searchText.toLowerCase();
+      filtered = filtered.filter((r: any) => 
+        r.nombre?.toLowerCase().includes(search) ||
+        r.marca?.toLowerCase().includes(search) ||
+        r.proveedor?.toLowerCase().includes(search) ||
+        r.serieFactura?.toLowerCase().includes(search) ||
+        r.numeroSerie?.toLowerCase().includes(search)
+      );
+    }
+    
+    // Filtro por rango de fechas
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      filtered = filtered.filter((r: any) => {
+        const fecha = dayjs(r.fechaIngreso);
+        return fecha.isAfter(dateRange[0].startOf('day')) && fecha.isBefore(dateRange[1].endOf('day'));
+      });
+    }
+    
+    return filtered;
+  }, [rows, searchText, dateRange]);
+  
+  const marcaFilters = Array.from(new Set(filteredRows.map((r: any) => r.marca).filter(Boolean))).map((m) => ({ text: m, value: m }));
+  const proveedorFilters = Array.from(new Set(filteredRows.map((r: any) => r.proveedor).filter(Boolean))).map((p) => ({ text: p, value: p }));
 
   const columns: ColumnsType<any> = [
   { title: 'Nombre', dataIndex: 'nombre' },
   { title: 'Marca', dataIndex: 'marca', filters: marcaFilters, onFilter: (v, r: any) => r.marca === v },
+  { title: 'Proveedor', dataIndex: 'proveedor', filters: proveedorFilters, onFilter: (v, r: any) => r.proveedor === v },
     { title: 'Cantidad', dataIndex: 'cantidad', sorter: (a, b) => (a.cantidad || 0) - (b.cantidad || 0) },
     { title: 'Unidad', dataIndex: 'unidad' },
     { title: 'Precio', dataIndex: 'precio', sorter: (a, b) => (a.precio || 0) - (b.precio || 0), render: (v: any) => `S/ ${v}` },
@@ -25,11 +59,39 @@ export default function IngresosListPage() {
   return (
     <div className="space-y-3">
       <Flex gap={8} align="center" wrap>
-        <DatePicker.RangePicker defaultValue={[dayjs().startOf('month'), dayjs()] as any} />
-        <Select placeholder="Proveedor" allowClear style={{ minWidth: 200 }} options={prov?.data.map(p => ({ label: p.nombre, value: p.id }))} />
+        <Input.Search
+          placeholder="Buscar por nombre, marca, proveedor o serie..."
+          allowClear
+          style={{ maxWidth: 400 }}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+        <DatePicker.RangePicker 
+          value={dateRange as any}
+          onChange={(dates) => setDateRange(dates as any)}
+          format="DD/MM/YYYY"
+        />
+        <Button 
+          icon={<ClearOutlined />} 
+          onClick={() => {
+            setSearchText('');
+            setDateRange([dayjs().startOf('month'), dayjs()]);
+          }}
+        >
+          Limpiar filtros
+        </Button>
       </Flex>
-  <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
-      <ExportButton rows={rows as any} filename="ingresos" />
+      <Table 
+        rowKey="id" 
+        dataSource={filteredRows as any} 
+        columns={columns} 
+        pagination={{ 
+          pageSize: 15,
+          showSizeChanger: true,
+          showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`
+        }} 
+      />
+      <ExportButton rows={filteredRows as any} filename="ingresos" />
     </div>
   );
 }

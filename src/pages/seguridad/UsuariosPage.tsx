@@ -1,12 +1,12 @@
 import { Button, Form, Input, Modal, Select, Table, Space } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
-import { useUsers, useCreateUser, useUpdateUser, useRemoveUser } from '../../lib/api';
-import { PREDEFINED_ROLES } from '../../types/seguridad';
+import { useUsers, useRoles, useCreateUser, useUpdateUser, useRemoveUser } from '../../lib/api';
 import { useState } from 'react';
 
 export default function UsuariosPage() {
   const { data } = useUsers();
+  const { data: rolesData } = useRoles();
   const { mutateAsync: create } = useCreateUser();
   const { mutateAsync: update } = useUpdateUser();
   const { mutateAsync: remove } = useRemoveUser();
@@ -21,7 +21,14 @@ export default function UsuariosPage() {
   };
 
   const rows = data?.data ?? [];
-  const roleOptions = Object.values(PREDEFINED_ROLES).map(r => ({ label: r.name, value: r.id }));
+  const roles = rolesData?.data ?? [];
+  const roleOptions = roles.map((r: any) => ({ label: r.name, value: r.id }));
+
+  // Función para obtener el nombre del rol por su ID
+  const getRoleName = (roleId: string) => {
+    const role = roles.find((r: any) => r.id === roleId);
+    return role?.name || roleId;
+  };
 
   const textFilter = (dataIndex: string, label: string): ColumnType<any> => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
@@ -48,7 +55,12 @@ export default function UsuariosPage() {
   const columns: ColumnsType<any> = [
     { title: 'Nombres', dataIndex: 'nombres', ...textFilter('nombres', 'nombres') },
     { title: 'Email', dataIndex: 'email', ...textFilter('email', 'email') },
-    { title: 'Rol', dataIndex: 'roleId', ...textFilter('roleId', 'rol') },
+    { 
+      title: 'Rol', 
+      dataIndex: 'roleId', 
+      render: (roleId: string) => getRoleName(roleId),
+      ...textFilter('roleId', 'rol') 
+    },
     { title: 'Acciones', render: (_: any, r: any) => (
       <div className="flex gap-2">
         <Button size="small" onClick={() => { setEditing(r); setOpen(true); form.setFieldsValue({ nombres: r.nombres, email: r.email, roleId: r.roleId }); }}>Editar</Button>

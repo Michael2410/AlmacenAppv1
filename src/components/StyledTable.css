@@ -1,21 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Estilos para el componente StyledTable */
+/* Color del sidebar: #001529 (azul marino oscuro de Ant Design) */
 
-/* App base layout tweaks */
-html, body, #root {
-  height: 100%;
-}
-body {
-  @apply bg-white text-gray-900;
-}
-
-/* ============================================
-   ESTILOS GLOBALES PARA TODAS LAS TABLAS
-   ============================================ */
-
-/* Encabezado con color azul marino del sidebar */
-.ant-table-thead > tr > th {
+.styled-table-container .styled-table .ant-table-thead > tr > th {
   background-color: #001529 !important;
   color: #ffffff !important;
   font-weight: 600;
@@ -23,52 +9,52 @@ body {
 }
 
 /* Hover en el encabezado */
-.ant-table-thead > tr > th:hover {
+.styled-table-container .styled-table .ant-table-thead > tr > th:hover {
   background-color: #002140 !important;
 }
 
 /* Iconos de filtro en blanco */
-.ant-table-filter-trigger {
+.styled-table-container .styled-table .ant-table-filter-trigger {
   color: #ffffff !important;
 }
 
 /* Hover del icono de filtro */
-.ant-table-filter-trigger:hover {
+.styled-table-container .styled-table .ant-table-filter-trigger:hover {
   color: #91d5ff !important;
 }
 
 /* Icono de filtro activo */
-.ant-table-filter-trigger.active {
+.styled-table-container .styled-table .ant-table-filter-trigger.active {
   color: #40a9ff !important;
 }
 
 /* Iconos de ordenamiento (sorter) en blanco */
-.ant-table-column-sorter {
+.styled-table-container .styled-table .ant-table-column-sorter {
   color: #ffffff80 !important;
 }
 
-.ant-table-column-sorter-up.active,
-.ant-table-column-sorter-down.active {
+.styled-table-container .styled-table .ant-table-column-sorter-up.active,
+.styled-table-container .styled-table .ant-table-column-sorter-down.active {
   color: #ffffff !important;
 }
 
 /* Hover en los iconos de ordenamiento */
-.ant-table-column-sorter:hover {
+.styled-table-container .styled-table .ant-table-column-sorter:hover {
   color: #ffffff !important;
 }
 
 /* Estilo para las filas */
-.ant-table-tbody > tr:hover > td {
+.styled-table-container .styled-table .ant-table-tbody > tr:hover > td {
   background-color: #f5f5f5 !important;
 }
 
 /* Filas alternas (opcional, para mejor legibilidad) */
-.ant-table-tbody > tr:nth-child(even) {
+.styled-table-container .styled-table .ant-table-tbody > tr:nth-child(even) {
   background-color: #fafafa;
 }
 
 /* Bordes de las celdas */
-.ant-table-tbody > tr > td {
+.styled-table-container .styled-table .ant-table-tbody > tr > td {
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -91,29 +77,29 @@ body {
 }
 
 /* Paginación alineada con el tema */
-.ant-pagination-item-active {
+.styled-table-container .ant-pagination-item-active {
   border-color: #001529;
   background-color: #001529;
 }
 
-.ant-pagination-item-active a {
+.styled-table-container .ant-pagination-item-active a {
   color: #ffffff;
 }
 
-.ant-pagination-item:hover {
+.styled-table-container .ant-pagination-item:hover {
   border-color: #001529;
 }
 
-.ant-pagination-item:hover a {
+.styled-table-container .ant-pagination-item:hover a {
   color: #001529;
 }
 
 /* Selector de tamaño de página */
-.ant-select:hover .ant-select-selector {
+.styled-table-container .ant-select-selector:hover {
   border-color: #001529 !important;
 }
 
-.ant-select-focused .ant-select-selector {
+.styled-table-container .ant-select-focused .ant-select-selector {
   border-color: #001529 !important;
   box-shadow: 0 0 0 2px rgba(0, 21, 41, 0.2) !important;
 }

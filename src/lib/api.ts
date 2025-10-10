@@ -55,8 +55,8 @@ const proveedores: Proveedor[] = [
   { id: 'p2', nombre: 'Proveedor Beta', direccion: 'Av. 2', contacto: 'Maria Gomez' },
 ];
 const productos: Producto[] = [
-  { id: 'pr1', nombre: 'Tornillo', unidad: 'UNIDAD' as UnidadMedida, areaId: 'a1', ubicacionId: 'u1', activo: true },
-  { id: 'pr2', nombre: 'Cable', unidad: 'M' as UnidadMedida, areaId: 'a2', ubicacionId: 'u2', activo: true },
+  { id: 'pr1', nombre: 'Tornillo', marca: 'Stanley', unidad: 'UNIDAD' as UnidadMedida, areaId: 'a1', ubicacionId: 'u1', activo: true },
+  { id: 'pr2', nombre: 'Cable', marca: 'Indeco', unidad: 'M' as UnidadMedida, areaId: 'a2', ubicacionId: 'u2', activo: true },
 ];
 let ingresos: Ingreso[] = [
   {
@@ -80,6 +80,9 @@ const realServices = {
     update: async (id: string, data: Partial<User>) => (await api.put(`/users/${id}`, data)).data as ApiResult<User>,
     remove: async (id: string) => (await api.delete(`/users/${id}`)).data as ApiResult<boolean>,
   },
+  roles: {
+    list: async () => (await api.get('/roles')).data as ApiResult<any[]>,
+  },
   proveedores: {
     list: async () => (await api.get('/proveedores')).data as ApiResult<Proveedor[]>,
     create: async (data: Omit<Proveedor,'id'>) => (await api.post('/proveedores', data)).data as ApiResult<Proveedor>,
@@ -94,9 +97,27 @@ const realServices = {
   },
   ingresos: {
     list: async () => (await api.get('/ingresos')).data as ApiResult<Ingreso[]>,
-    create: async (data: Omit<Ingreso,'id'>) => (await api.post('/ingresos', data)).data as ApiResult<Ingreso>,
+    create: async (data: Omit<Ingreso,'id' | 'areaId' | 'ubicacionId' | 'unidad'>) => (await api.post('/ingresos', data)).data as ApiResult<Ingreso>,
   },
   referencias: async () => (await api.get('/referencias')).data as ApiResult<{ areas: Area[]; ubicaciones: Ubicacion[] }>,
+  areas: {
+    list: async () => (await api.get('/areas')).data as ApiResult<Area[]>,
+    create: async (data: Omit<Area,'id'>) => (await api.post('/areas', data)).data as ApiResult<Area>,
+    update: async (id: string, data: Partial<Area>) => (await api.put(`/areas/${id}`, data)).data as ApiResult<Area>,
+    remove: async (id: string) => (await api.delete(`/areas/${id}`)).data as ApiResult<boolean>,
+  },
+  ubicaciones: {
+    list: async () => (await api.get('/ubicaciones')).data as ApiResult<Ubicacion[]>,
+    create: async (data: Omit<Ubicacion,'id'>) => (await api.post('/ubicaciones', data)).data as ApiResult<Ubicacion>,
+    update: async (id: string, data: Partial<Ubicacion>) => (await api.put(`/ubicaciones/${id}`, data)).data as ApiResult<Ubicacion>,
+    remove: async (id: string) => (await api.delete(`/ubicaciones/${id}`)).data as ApiResult<boolean>,
+  },
+  unidadesMedida: {
+    list: async () => (await api.get('/unidades-medida')).data as ApiResult<any[]>,
+    create: async (data: { nombre: string; simbolo: string; activo?: boolean }) => (await api.post('/unidades-medida', data)).data as ApiResult<any>,
+    update: async (id: string, data: { nombre?: string; simbolo?: string; activo?: boolean }) => (await api.put(`/unidades-medida/${id}`, data)).data as ApiResult<any>,
+    remove: async (id: string) => (await api.delete(`/unidades-medida/${id}`)).data as ApiResult<boolean>,
+  },
   stock: {
     mio: async () => (await api.get('/stock/mio')).data as ApiResult<any[]>,
     general: async () => (await api.get('/stock/general')).data as ApiResult<any[]>,
@@ -109,7 +130,7 @@ const realServices = {
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida; observacion?: string }) => (await api.post('/salidas', data)).data as ApiResult<any>,
   },
   pedidos: {
-    list: async () => (await api.get('/pedidos')).data as ApiResult<any[]>,
+    list: async () => (await api.get('/pedidos/admin')).data as ApiResult<any[]>,
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida }) => (await api.post('/pedidos', data)).data as ApiResult<any>,
   createBatch: async (items: Array<{ productoId: string; cantidad: number; unidad: UnidadMedida }>) => (await api.post('/pedidos/batch', { items })).data as ApiResult<any[]>,
     changeEstado: async (id: string, estado: string) => (await api.put(`/pedidos/${id}/estado`, { estado })).data as ApiResult<any>,
@@ -153,6 +174,9 @@ export const services = USE_MOCKS ? {
       return mockDelay(true as any);
     },
   },
+  roles: {
+    list: async () => mockDelay([]),
+  },
   proveedores: {
     list: async () => mockDelay(proveedores),
     create: async (data: Omit<Proveedor,'id'>) => {
@@ -191,13 +215,59 @@ export const services = USE_MOCKS ? {
   },
   ingresos: {
     list: async () => mockDelay(ingresos),
-    create: async (data: Omit<Ingreso,'id'>) => {
-      const item: Ingreso = { ...data, id: `i${Date.now()}` };
+    create: async (data: Omit<Ingreso,'id' | 'areaId' | 'ubicacionId' | 'unidad'>) => {
+      const item: Ingreso = { ...data, id: `i${Date.now()}`, areaId: 'a1', ubicacionId: 'u1', unidad: 'UNIDAD' };
       ingresos.push(item);
       return mockDelay(item);
     },
   },
   referencias: async () => mockDelay({ areas, ubicaciones }),
+  areas: {
+    list: async () => mockDelay(areas as any[]),
+    create: async (data: Omit<Area,'id'>) => {
+      const item = { ...data, id: `a${Date.now()}` };
+      areas.push(item);
+      return mockDelay(item);
+    },
+    update: async (id: string, data: Partial<Area>) => {
+      const i = areas.findIndex(a => a.id === id);
+      if (i >= 0) Object.assign(areas[i], data);
+      return mockDelay(areas[i]);
+    },
+    remove: async (id: string) => {
+      const idx = areas.findIndex(a => a.id === id);
+      if (idx >= 0) areas.splice(idx, 1);
+      return mockDelay(true as unknown as any);
+    },
+  },
+  ubicaciones: {
+    list: async () => mockDelay(ubicaciones as any[]),
+    create: async (data: Omit<Ubicacion,'id'>) => {
+      const item = { ...data, id: `u${Date.now()}` };
+      ubicaciones.push(item);
+      return mockDelay(item);
+    },
+    update: async (id: string, data: Partial<Ubicacion>) => {
+      const i = ubicaciones.findIndex(u => u.id === id);
+      if (i >= 0) Object.assign(ubicaciones[i], data);
+      return mockDelay(ubicaciones[i]);
+    },
+    remove: async (id: string) => {
+      const idx = ubicaciones.findIndex(u => u.id === id);
+      if (idx >= 0) ubicaciones.splice(idx, 1);
+      return mockDelay(true as unknown as any);
+    },
+  },
+  unidadesMedida: {
+    list: async () => mockDelay([
+      { id: 'um1', nombre: 'Unidad', simbolo: 'UNIDAD', activo: true },
+      { id: 'um2', nombre: 'Kilogramo', simbolo: 'KG', activo: true },
+      { id: 'um3', nombre: 'Litro', simbolo: 'L', activo: true },
+    ]),
+    create: async (data: any) => mockDelay({ id: `um${Date.now()}`, ...data, activo: data.activo !== false }),
+    update: async (id: string, data: any) => mockDelay({ id, ...data }),
+    remove: async (_id: string) => mockDelay(true as unknown as any),
+  },
   stock: {
     mio: async () => mockDelay([] as any[]),
     general: async () => mockDelay(productos as any[]),
@@ -217,10 +287,14 @@ import { useInventarioStore } from '../store/inventario.store';
 
 export const keys = {
   users: ['users'] as const,
+  roles: ['roles'] as const,
   proveedores: ['proveedores'] as const,
   productos: ['productos'] as const,
   ingresos: ['ingresos'] as const,
   referencias: ['referencias'] as const,
+  areas: ['areas'] as const,
+  ubicaciones: ['ubicaciones'] as const,
+  unidadesMedida: ['unidades-medida'] as const,
   miInventario: (userId: string) => ['miInventario', userId] as const,
   stockMio: ['stock','mio'] as const,
   stockGeneral: ['stock','general'] as const,
@@ -234,6 +308,9 @@ export function useProveedores() {
 }
 export function useUsers() {
   return useQuery({ queryKey: keys.users, queryFn: services.users.list });
+}
+export function useRoles() {
+  return useQuery({ queryKey: keys.roles, queryFn: services.roles.list });
 }
 export function useProductos() {
   return useQuery({ queryKey: keys.productos, queryFn: services.productos.list });
@@ -351,6 +428,31 @@ export function useAsignarPedido() {
   });
 }
 
+export function useEntregarLote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (loteId: string) => {
+      const token = useTokenStore.getState().token;
+      const res = await fetch(`/api/pedidos/lote/${loteId}/entregar`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Error al entregar lote');
+      }
+      return res.json();
+    },
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.pedidos }); 
+      qc.invalidateQueries({ queryKey: keys.stockMio }); 
+    },
+  });
+}
+
 // Auth helper
 export async function loginAndSetToken(email: string, password: string) {
   const res = await services.auth.login(email, password);
@@ -376,6 +478,118 @@ export function useUpdateProducto() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: keys.productos }); },
   });
 }
+
+// Areas hooks
+export function useAreas() {
+  return useQuery({ queryKey: keys.areas, queryFn: services.areas.list });
+}
+
+export function useCreateArea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.areas.create,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.areas }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+export function useUpdateArea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Area> }) => services.areas.update(id, data),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.areas }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+export function useDeleteArea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.areas.remove,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.areas }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+// Ubicaciones hooks
+export function useUbicaciones() {
+  return useQuery({ queryKey: keys.ubicaciones, queryFn: services.ubicaciones.list });
+}
+
+export function useCreateUbicacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.ubicaciones.create,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.ubicaciones }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+export function useUpdateUbicacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Ubicacion> }) => services.ubicaciones.update(id, data),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.ubicaciones }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+export function useDeleteUbicacion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.ubicaciones.remove,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.ubicaciones }); 
+      qc.invalidateQueries({ queryKey: keys.referencias }); 
+    },
+  });
+}
+
+// Unidades de medida hooks
+export function useUnidadesMedida() {
+  return useQuery({ queryKey: keys.unidadesMedida, queryFn: services.unidadesMedida.list });
+}
+
+export function useCreateUnidadMedida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.unidadesMedida.create,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.unidadesMedida }); 
+    },
+  });
+}
+
+export function useUpdateUnidadMedida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => services.unidadesMedida.update(id, data),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.unidadesMedida }); 
+    },
+  });
+}
+
+export function useDeleteUnidadMedida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.unidadesMedida.remove,
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: keys.unidadesMedida }); 
+    },
+  });
+}
+
 export function useRemoveProducto() {
   const qc = useQueryClient();
   return useMutation({

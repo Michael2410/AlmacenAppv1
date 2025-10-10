@@ -54,8 +54,19 @@ export default function SalidasPage() {
     <div className="space-y-3">
       <Form form={form} layout="inline" onFinish={onFinish}>
         <Form.Item name="productoId" rules={[{ required: true, message: 'Seleccione un producto' }]}>
-          <Select showSearch placeholder="Producto" optionFilterProp="label" style={{ minWidth: 220 }}
-            options={productos.map((p: any) => ({ value: p.id, label: p.nombre }))} />
+          <Select 
+            showSearch 
+            placeholder="Buscar producto..." 
+            optionFilterProp="label" 
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            style={{ minWidth: 220 }}
+            options={productos.map((p: any) => ({ 
+              value: p.id, 
+              label: `${p.nombre}${p.marca ? ` - ${p.marca}` : ''}` 
+            }))} 
+          />
         </Form.Item>
         <Form.Item name="cantidad" rules={[{ required: true, type: 'number', min: 0.000001 }]}>
           <InputNumber placeholder="Cantidad" />
