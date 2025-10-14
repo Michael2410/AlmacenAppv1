@@ -42,22 +42,78 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  return (
-    <div className="flex min-h-[70vh] items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <Typography.Title level={3} style={{ marginTop: 0 }}>Iniciar sesión</Typography.Title>
-        <Form layout="vertical" onFinish={onFinish}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
-            <Input placeholder="tu@correo.com" />
-          </Form.Item>
-          <Form.Item name="password" label="Contraseña" rules={[{ required: true }]}>
-            <Input.Password />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading}>Entrar</Button>
-          </Form.Item>
-        </Form>
-      </Card>
-    </div>
-  );
+return (
+  <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-slate-100 to-slate-200 p-6">
+    <Card
+      className="w-full max-w-md shadow-2xl rounded-2xl border border-gray-100 backdrop-blur-sm"
+      style={{
+        background: "rgba(255,255,255,0.9)",
+        padding: "2.5rem",
+      }}
+    >
+      <div className="text-center mb-6">
+        <Typography.Title
+          level={3}
+          style={{
+            marginTop: 0,
+            marginBottom: "0.5rem",
+            fontWeight: 700,
+          }}
+        >
+          Iniciar sesión
+        </Typography.Title>
+        <Typography.Text type="secondary">
+          Ingresa tus credenciales para continuar
+        </Typography.Text>
+      </div>
+
+      <Form
+        layout="vertical"
+        onFinish={onFinish}
+        className="space-y-4"
+        size="large"
+      >
+        <Form.Item
+          name="email"
+          label="Correo electrónico"
+          rules={[
+            { required: true, type: "email", message: "Ingresa un correo válido" },
+          ]}
+        >
+          <Input
+            placeholder="tu@correo.com"
+            className="rounded-lg"
+            prefix={<i className="ri-mail-line text-gray-400 mr-1" />}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="password"
+          label="Contraseña"
+          rules={[{ required: true, message: "Ingresa tu contraseña" }]}
+        >
+          <Input.Password
+            placeholder="••••••••"
+            className="rounded-lg"
+            prefix={<i className="ri-lock-line text-gray-400 mr-1" />}
+          />
+        </Form.Item>
+
+        <Form.Item>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            loading={loading}
+            className="rounded-lg font-semibold h-11 text-base"
+          >
+            Entrar
+          </Button>
+        </Form.Item>
+      </Form>
+    </Card>
+  </div>
+);
+
+
 }

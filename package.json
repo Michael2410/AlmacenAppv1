@@ -1,13 +1,22 @@
 {
   "name": "almacenapp",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
+  "description": "Sistema integral de gestión de inventario con React + TypeScript y Express + SQLite",
+  "author": "Michael Gomez <michael@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Michael2410/AlmacenApp.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:prod": "npm run build && npm run copy:dist",
+    "copy:dist": "xcopy /E /I /Y dist server\\public"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.2",
@@ -16,11 +25,16 @@
     "antd": "^5.27.4",
     "axios": "^1.12.2",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "dayjs": "^1.11.18",
+    "jspdf": "^3.0.3",
+    "jspdf-autotable": "^5.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.9.3",
+    "recharts": "^3.2.1",
     "tailwind-merge": "^3.3.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.11",
     "zustand": "^5.0.8"
   },

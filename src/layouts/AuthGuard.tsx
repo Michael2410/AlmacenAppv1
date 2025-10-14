@@ -11,24 +11,17 @@ export default function AuthGuard({ children }: PropsWithChildren) {
   
   // Sincronizar tokens al montar
   useEffect(() => {
-    console.log('AuthGuard inicializando - usuario:', user?.email, 'token auth store:', !!token);
-    
-    const localToken = localStorage.getItem('token');
-    console.log('Token en localStorage:', !!localToken);
-    
     if (token) {
-      // Si hay token en auth store, asegurar que esté en api store
       setApiToken(token);
-      console.log('Token sincronizado al API store');
-    } else if (localToken && !user) {
-      // Si hay token en localStorage pero no en auth store, algo está mal
-      console.log('Token en localStorage pero no en auth store - limpiando');
-      localStorage.removeItem('token');
+    } else {
+      const localToken = localStorage.getItem('token');
+      if (localToken && !user) {
+        localStorage.removeItem('token');
+      }
     }
   }, [user, token, setApiToken]);
   
   if (!user) {
-    console.log('AuthGuard: No user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
   

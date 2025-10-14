@@ -1,4 +1,4 @@
-import { Button, Space, message, Table, Input, Modal, Select, Tag, List } from 'antd';
+import { Button, Space, message, Table, Input, Modal, Select, Tag, List, Card } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -18,10 +18,10 @@ export default function PedidosAdminPage() {
   const { data: prodsRes } = useProductos();
   const users = usersRes?.data ?? [];
   const productos = prodsRes?.data ?? [];
-  
+
   const userNameOf = (id: string) => users.find((u: any) => u.id === id)?.nombres ?? id;
   const productNameOf = (id: string) => productos.find((p: any) => p.id === id)?.nombre ?? id;
-  
+
   // Agrupar pedidos por loteId
   const lotes = useMemo(() => {
     const grupos: any = {};
@@ -57,7 +57,6 @@ export default function PedidosAdminPage() {
       message.success('Estado actualizado para todo el lote');
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Error al actualizar el estado');
-      console.error(error);
     }
   };
 
@@ -67,7 +66,6 @@ export default function PedidosAdminPage() {
       message.success('Lote completo entregado');
     } catch (error: any) {
       message.error(error.message || 'Error al entregar el lote');
-      console.error(error);
     }
   };
 
@@ -76,7 +74,7 @@ export default function PedidosAdminPage() {
   };
 
   const estadoFilters = useMemo(() => Array.from(new Set(lotes.map((l: any) => l.estado))).filter(Boolean).map((e) => ({ text: e, value: e })), [lotes]);
-  
+
   const textFilter = (label: string, getValue: (rec: any) => string): ColumnType<any> => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
       <div className="p-2">
@@ -101,8 +99,8 @@ export default function PedidosAdminPage() {
 
   const columns: ColumnsType<any> = [
     { title: 'Usuario', dataIndex: 'usuarioId', render: (_: any, r: any) => userNameOf(r.usuarioId), ...textFilter('usuario', (rec) => userNameOf(rec.usuarioId)) },
-    { 
-      title: 'Productos', 
+    {
+      title: 'Productos',
       render: (_: any, r: any) => (
         <div>
           <Tag color="blue">{r.items.length} producto{r.items.length > 1 ? 's' : ''}</Tag>
@@ -112,10 +110,10 @@ export default function PedidosAdminPage() {
         </div>
       )
     },
-    { 
-      title: 'Estado', 
-      dataIndex: 'estado', 
-      filters: estadoFilters, 
+    {
+      title: 'Estado',
+      dataIndex: 'estado',
+      filters: estadoFilters,
       onFilter: (v, r) => r.estado === v,
       render: (estado: string) => {
         const colores = {
@@ -136,27 +134,27 @@ export default function PedidosAdminPage() {
         const esAprobado = r.estado === 'aprobado';
         const esRechazado = r.estado === 'rechazado';
         const esPendiente = r.estado === 'pendiente';
-        
+
         return (
           <Space size={8}>
-            <Button 
-              size="small" 
+            <Button
+              size="small"
               onClick={() => act(r.loteId, 'aprobado')}
               disabled={esEntregado || esAprobado || esRechazado}
               type={esAprobado ? 'primary' : 'default'}
             >
               {esAprobado ? 'Aprobado' : 'Aprobar'}
             </Button>
-            <Button 
-              size="small" 
+            <Button
+              size="small"
               danger={esRechazado}
               onClick={() => act(r.loteId, 'rechazado')}
               disabled={esEntregado || esAprobado || esRechazado}
             >
               {esRechazado ? 'Rechazado' : 'Rechazar'}
             </Button>
-            <Button 
-              size="small" 
+            <Button
+              size="small"
               type={esEntregado ? 'primary' : 'default'}
               onClick={() => entregar(r.loteId)}
               disabled={esEntregado || esRechazado || esPendiente}
@@ -171,8 +169,12 @@ export default function PedidosAdminPage() {
 
   return (
     <>
-      <Table rowKey="loteId" dataSource={lotes as any} columns={columns} pagination={{ pageSize: 10 }} />
-      
+      <Card
+        title="Pedidos"
+
+      >
+        <Table rowKey="loteId" dataSource={lotes as any} columns={columns} pagination={{ pageSize: 10 }} />
+      </Card>
       {/* Modal de detalle de productos */}
       <Modal
         open={detalleModal.open}

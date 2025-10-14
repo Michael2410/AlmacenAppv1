@@ -7,28 +7,6 @@ export default function SidebarNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const has = useAuthStore(s => s.hasPermission);
-  const roleId = useAuthStore(s => s.user?.roleId);
-  const user = useAuthStore(s => s.user);
-  const roles = useAuthStore(s => s.roles);
-
-  // Obtener permisos del usuario para debug
-  const userRole = roles.find(r => r.id === user?.roleId);
-  const allPermissions = [...(userRole?.permissions || []), ...(user?.permissions || [])];
-
-  // Debug logs
-  console.log('🔍 SidebarNav Debug:', {
-    roleId,
-    userEmail: user?.email,
-    rolesCount: roles.length,
-    userRoleName: userRole?.name,
-    allPermissions,
-    hasInventoryAssign: has(['inventory.assign']),
-    hasUsersManage: has(['users.manage']),
-    hasProductsView: has(['products.view']),
-    hasAreasManage: has(['areas.manage']),
-    hasUbicacionesManage: has(['ubicaciones.manage']),
-    hasUnidadesManage: has(['unidades.manage'])
-  });
 
   const workerItems = [
     has(['inventory.viewSelf']) ? { key: '/inventario', icon: <StockOutlined />, label: 'Mi Inventario' } : null,

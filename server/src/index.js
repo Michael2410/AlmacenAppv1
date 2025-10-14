@@ -2,24 +2,44 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import db from './db.js';
+import { validarStockDisponible, getStockDisponible, getProductosBajoStock, getStockGeneralDetallado, getProductosProximosVencer } from './utils/stockValidator.js';
+import { initAuditTable, logAudit, getAuditLogs, getAuditStats, auditMiddleware } from './utils/auditLogger.js';
+import { getDashboardMetrics, getDashboardCharts, getRecentActivity } from './utils/dashboardMetrics.js';
+import { 
+  getInventarioGeneralReport, 
+  getIngresosReport, 
+  getPedidosReport, 
+  getStockPorUsuarioReport, 
+  getMovimientosReport,
+  getResumenEjecutivo 
+} from './utils/reportGenerator.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(auditMiddleware); // Capturar IP y User Agent
+
+// Servir archivos estáticos del frontend
+app.use(express.static(path.join(__dirname, '../public')));
+
+// Inicializar tabla de auditoría
+initAuditTable();
 
 const JWT_SECRET = 'dev-secret';
 
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  console.log('Auth header:', auth);
-  console.log('Token extracted:', token ? token.substring(0, 20) + '...' : 'No token');
   
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    console.log('Token payload:', payload);
     req.user = payload;
     next();
   } catch (e) {
@@ -59,9 +79,31 @@ function hasAdminPermissions(user) {
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
+  if (!user) {
+    // Log intento fallido
+    logAudit({
+      usuarioId: 'system',
+      accion: 'LOGIN_FAILED',
+      modulo: 'auth',
+      entidadDescripcion: `Intento fallido para email: ${email}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
+  }
+  
   const ok = bcrypt.compareSync(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
+  if (!ok) {
+    logAudit({
+      usuarioId: user.id,
+      accion: 'LOGIN_FAILED',
+      modulo: 'auth',
+      entidadDescripcion: `Contraseña incorrecta para: ${email}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
+  }
   
   // Get all roles to send with login response
   const roles = db.prepare('SELECT * FROM roles WHERE active = 1').all().map(role => ({
@@ -75,6 +117,16 @@ app.post('/api/auth/login', (req, res) => {
     ...safeUser,
     permissions: user.permissions ? JSON.parse(user.permissions) : []
   };
+  
+  // Log login exitoso
+  logAudit({
+    usuarioId: user.id,
+    accion: 'LOGIN',
+    modulo: 'auth',
+    entidadDescripcion: `Login exitoso: ${email}`,
+    ip: req.auditInfo?.ip,
+    userAgent: req.auditInfo?.userAgent
+  });
   
   res.json({ success: true, data: { token, user: userWithPerms, roles } });
 });
@@ -90,6 +142,19 @@ app.post('/api/users', authMiddleware, requireAdmin, (req, res) => {
   const hash = bcrypt.hashSync(password ?? '123456', 10);
   try {
     db.prepare('INSERT INTO users (id, nombres, email, roleId, passwordHash) VALUES (?,?,?,?,?)').run(id, nombres, email, roleId, hash);
+    
+    // Log creación de usuario
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'CREATE',
+      modulo: 'usuarios',
+      entidadId: id,
+      entidadDescripcion: `Usuario creado: ${nombres} (${email})`,
+      cambios: { nombres, email, roleId },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
     res.json({ success: true, data: { id, nombres, email, roleId } });
   } catch (e) {
     res.status(400).json({ success: false, message: 'No se pudo crear usuario' });
@@ -98,20 +163,59 @@ app.post('/api/users', authMiddleware, requireAdmin, (req, res) => {
 app.put('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
   const { id } = req.params;
   const { nombres, email, roleId, password } = req.body;
+  
+  // Obtener valores anteriores
+  const userAntes = db.prepare('SELECT nombres, email, roleId FROM users WHERE id = ?').get(id);
+  
   const sets = [];
   const vals = [];
-  if (nombres) { sets.push('nombres = ?'); vals.push(nombres); }
-  if (email) { sets.push('email = ?'); vals.push(email); }
-  if (roleId) { sets.push('roleId = ?'); vals.push(roleId); }
-  if (password) { sets.push('passwordHash = ?'); vals.push(bcrypt.hashSync(password, 10)); }
+  const cambios = { antes: userAntes, despues: {} };
+  
+  if (nombres) { sets.push('nombres = ?'); vals.push(nombres); cambios.despues.nombres = nombres; }
+  if (email) { sets.push('email = ?'); vals.push(email); cambios.despues.email = email; }
+  if (roleId) { sets.push('roleId = ?'); vals.push(roleId); cambios.despues.roleId = roleId; }
+  if (password) { sets.push('passwordHash = ?'); vals.push(bcrypt.hashSync(password, 10)); cambios.despues.password = '***'; }
+  
   if (!sets.length) return res.json({ success: true, data: null });
+  
   db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, id);
   const u = db.prepare('SELECT id, nombres, email, roleId FROM users WHERE id = ?').get(id);
+  
+  // Log actualización de usuario
+  logAudit({
+    usuarioId: req.user.id,
+    accion: 'UPDATE',
+    modulo: 'usuarios',
+    entidadId: id,
+    entidadDescripcion: `Usuario actualizado: ${u.nombres} (${u.email})`,
+    cambios,
+    ip: req.auditInfo?.ip,
+    userAgent: req.auditInfo?.userAgent
+  });
+  
   res.json({ success: true, data: u });
 });
 app.delete('/api/users/:id', authMiddleware, requireAdmin, (req, res) => {
   const { id } = req.params;
+  
+  // Obtener datos antes de eliminar
+  const user = db.prepare('SELECT nombres, email FROM users WHERE id = ?').get(id);
+  
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  
+  // Log eliminación de usuario
+  if (user) {
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'DELETE',
+      modulo: 'usuarios',
+      entidadId: id,
+      entidadDescripcion: `Usuario eliminado: ${user.nombres} (${user.email})`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+  }
+  
   res.json({ success: true, data: true });
 });
 
@@ -258,7 +362,6 @@ app.delete('/api/proveedores/:id', authMiddleware, requireAdmin, (req, res) => {
 app.get('/api/productos', authMiddleware, (req, res) => {
   try {
     const list = db.prepare('SELECT * FROM productos').all();
-    console.log('Productos en BD:', list.length, list);
     res.json({ success: true, data: list });
   } catch (error) {
     console.error('Error al obtener productos:', error);
@@ -370,7 +473,6 @@ app.get('/api/pedidos/mios', authMiddleware, (req, res) => {
 
 app.get('/api/pedidos/admin', authMiddleware, (req, res) => {
   try {
-    console.log('📋 Consultando pedidos para admin...');
     const pedidos = db.prepare(`
       SELECT p.*, pr.nombre as producto_nombre, pr.unidad as producto_unidad, pr.marca as producto_marca,
              u.nombres as usuario_nombres,
@@ -381,8 +483,6 @@ app.get('/api/pedidos/admin', authMiddleware, (req, res) => {
       ORDER BY fecha_pedido DESC
     `).all();
     
-    console.log('📋 Pedidos encontrados:', pedidos.length);
-    
     const pedidosFormatted = pedidos.map(p => ({
       id: p.id,
       usuarioId: p.usuarioId,
@@ -392,6 +492,7 @@ app.get('/api/pedidos/admin', authMiddleware, (req, res) => {
       cantidad: p.cantidad,
       unidad: p.producto_unidad,
       estado: p.estado,
+      fecha: p.fecha_pedido,
       fechaSolicitud: p.fecha_pedido,
       fechaRespuesta: p.fechaRespuesta,
       observaciones: p.observaciones,
@@ -689,9 +790,6 @@ app.get('/api/pedidos/agrupados', authMiddleware, (req, res) => {
 });
 app.post('/api/pedidos', authMiddleware, (req, res) => {
   try {
-    console.log('🛍️ Creando pedido - Body completo:', req.body);
-    console.log('🛍️ Usuario:', req.user);
-
     let { productoId, cantidad, unidad, marca = null, observaciones } = req.body || {};
     cantidad = Number(cantidad);
 
@@ -704,10 +802,7 @@ app.post('/api/pedidos', authMiddleware, (req, res) => {
       }
     }
 
-    console.log('🛍️ Datos normalizados:', { productoId, cantidad, unidad, marca, observaciones });
-
     if (!productoId || !cantidad || Number.isNaN(cantidad) || cantidad <= 0 || !unidad) {
-      console.log('❌ Datos inválidos:', { productoId, cantidad, unidad });
       return res.status(400).json({ success: false, message: 'Datos inválidos para crear el pedido' });
     }
 
@@ -715,13 +810,10 @@ app.post('/api/pedidos', authMiddleware, (req, res) => {
     const fecha = new Date().toISOString();
     const loteId = `lote${Date.now()}`;
 
-    console.log('🛍️ Insertando en BD:', { id, usuarioId: req.user.id, productoId, cantidad, unidad, marca, observaciones });
-
   db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fecha, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)')
   .run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fecha, loteId, marca);
 
   const result = { id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fecha, loteId, marca, observaciones };
-    console.log('✅ Pedido creado exitosamente:', result);
 
     res.json({ success: true, data: result });
   } catch (error) {
@@ -732,10 +824,8 @@ app.post('/api/pedidos', authMiddleware, (req, res) => {
 // Crear múltiples pedidos en una sola solicitud
 app.post('/api/pedidos/batch', authMiddleware, (req, res) => {
   try {
-    console.log('🛍️ Batch pedidos - Body:', req.body);
     const { items } = req.body || {};
     if (!Array.isArray(items) || items.length === 0) {
-      console.log('❌ items no es array o está vacío');
       return res.status(400).json({ success: false, message: 'No hay items que procesar' });
     }
     const stmt = db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fecha, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)');
@@ -746,10 +836,7 @@ app.post('/api/pedidos/batch', authMiddleware, (req, res) => {
       let { productoId, cantidad, unidad, marca = null } = it || {};
       cantidad = Number(cantidad);
       
-      console.log('🛍️ Procesando item:', { productoId, cantidad, unidad, marca });
-      
       if (!productoId || !cantidad || Number.isNaN(cantidad) || cantidad <= 0) {
-        console.log('❌ Item inválido (falta productoId o cantidad)');
         continue;
       }
       
@@ -759,25 +846,20 @@ app.post('/api/pedidos/batch', authMiddleware, (req, res) => {
         if (prod) {
           unidad = unidad || prod.unidad || 'UNIDAD';
           marca = marca || prod.marca || null;
-          console.log('✅ Completado desde producto:', { unidad, marca });
         }
       }
       
       if (!unidad) {
-        console.log('❌ No se pudo determinar unidad');
         continue;
       }
       
       const id = `req${Date.now()}${Math.floor(Math.random()*1000)}`;
       stmt.run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fecha, loteId, marca);
       created.push({ id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fecha, loteId, marca });
-      console.log('✅ Item creado:', id);
     }
     if (!created.length) {
-      console.log('❌ No se creó ningún item válido');
       return res.status(400).json({ success: false, message: 'Items inválidos' });
     }
-    console.log('✅ Batch exitoso:', created.length, 'items');
     res.json({ success: true, data: created, loteId });
   } catch (error) {
     console.error('❌ Error en batch:', error);
@@ -809,19 +891,12 @@ app.post('/api/pedidos/lote/:loteId/entregar', authMiddleware, requireAdmin, (re
     return res.status(404).json({ success: false, message: 'Lote no encontrado' });
   }
 
-  // Validar disponibilidad para cada pedido del lote
+  // Validar stock disponible para todos los pedidos del lote
   for (const pedido of pedidos) {
-    // Validar disponibilidad considerando la marca específica del pedido
-    const marca = pedido.marca || null;
-    const totIng = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM ingresos WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(pedido.productoId, marca, marca).s;
-    const totAsg = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM user_stock WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(pedido.productoId, marca, marca).s;
-    const disponible = (totIng || 0) - (totAsg || 0);
-    
-    if (pedido.cantidad > disponible) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Stock insuficiente para ${pedido.productoId}${marca ? ` (marca: ${marca})` : ''}. Disponible: ${disponible}, Solicitado: ${pedido.cantidad}` 
-      });
+    try {
+      validarStockDisponible(pedido.productoId, pedido.cantidad, pedido.marca);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
     }
   }
 
@@ -831,10 +906,37 @@ app.post('/api/pedidos/lote/:loteId/entregar', authMiddleware, requireAdmin, (re
     const marca = pedido.marca || null;
     db.prepare('INSERT INTO user_stock (id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca) VALUES (?,?,?,?,?,?,?,?)')
       .run(sid, pedido.usuarioId, pedido.productoId, pedido.cantidad, pedido.unidad, 'a1', 'u1', marca);
+    
+    // Log asignación individual
+    const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(pedido.productoId);
+    const usuario = db.prepare('SELECT nombres FROM users WHERE id = ?').get(pedido.usuarioId);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'ASIGNACION',
+      modulo: 'inventario',
+      entidadId: sid,
+      entidadDescripcion: `Asignado ${pedido.cantidad} ${pedido.unidad} de ${producto?.nombre || pedido.productoId} a ${usuario?.nombres || pedido.usuarioId}`,
+      cambios: { pedidoId: pedido.id, productoId: pedido.productoId, cantidad: pedido.cantidad, marca, usuarioId: pedido.usuarioId },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
   }
 
   // Actualizar estado del lote completo
   db.prepare('UPDATE pedidos SET estado=? WHERE loteId=?').run('entregado', loteId);
+  
+  // Log entrega de lote
+  logAudit({
+    usuarioId: req.user.id,
+    accion: 'LOTE_ENTREGADO',
+    modulo: 'pedidos',
+    entidadId: loteId,
+    entidadDescripcion: `Lote ${loteId} entregado con ${pedidos.length} pedidos`,
+    cambios: { totalPedidos: pedidos.length },
+    ip: req.auditInfo?.ip,
+    userAgent: req.auditInfo?.userAgent
+  });
   
   res.json({ success: true, data: { message: 'Lote entregado exitosamente' } });
 });
@@ -843,16 +945,35 @@ app.post('/api/pedidos/:id/asignar', authMiddleware, requireAdmin, (req, res) =>
   const { marca = null } = req.body;
   const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(id);
   if (!pedido) return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
-  // validar disponibilidad por marca
-  const totIng = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM ingresos WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(pedido.productoId, marca, marca).s;
-  const totAsg = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM user_stock WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(pedido.productoId, marca, marca).s;
-  const disponible = (totIng || 0) - (totAsg || 0);
-  if (pedido.cantidad > disponible) return res.status(400).json({ success: false, message: 'Stock insuficiente' });
+  
+  // Usar validador centralizado
+  try {
+    validarStockDisponible(pedido.productoId, pedido.cantidad, marca);
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  
   // Registrar en user_stock (asignación)
   const sid = `s${Date.now()}`;
   db.prepare('INSERT INTO user_stock (id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca) VALUES (?,?,?,?,?,?,?,?)')
     .run(sid, pedido.usuarioId, pedido.productoId, pedido.cantidad, pedido.unidad, 'a1', 'u1', marca);
   db.prepare('UPDATE pedidos SET estado=? WHERE id=?').run('entregado', id);
+  
+  // Log asignación individual
+  const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(pedido.productoId);
+  const usuario = db.prepare('SELECT nombres FROM users WHERE id = ?').get(pedido.usuarioId);
+  
+  logAudit({
+    usuarioId: req.user.id,
+    accion: 'ASIGNACION',
+    modulo: 'inventario',
+    entidadId: sid,
+    entidadDescripcion: `Asignado ${pedido.cantidad} ${pedido.unidad} de ${producto?.nombre || pedido.productoId} a ${usuario?.nombres || pedido.usuarioId}`,
+    cambios: { pedidoId: id, productoId: pedido.productoId, cantidad: pedido.cantidad, marca, usuarioId: pedido.usuarioId },
+    ip: req.auditInfo?.ip,
+    userAgent: req.auditInfo?.userAgent
+  });
+  
   res.json({ success: true, data: { ok: true } });
 });
 
@@ -1021,7 +1142,6 @@ app.post('/api/debug/auto-login-user2', (req, res) => {
       permissions: user.permissions ? JSON.parse(user.permissions) : []
     };
     
-    console.log('🔧 Auto-login user2 exitoso, token generado:', token.substring(0, 20) + '...');
     res.json({ 
       success: true, 
       token: token,
@@ -1034,5 +1154,267 @@ app.post('/api/debug/auto-login-user2', (req, res) => {
   }
 });
 
+// ====== ENDPOINTS DE STOCK ======
+
+// Obtener stock disponible de un producto (opcionalmente por marca)
+app.get('/api/stock/disponible/:productoId', authMiddleware, (req, res) => {
+  try {
+    const { productoId } = req.params;
+    const { marca } = req.query;
+    const disponible = getStockDisponible(productoId, marca || null);
+    res.json({ success: true, data: { disponible } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener productos con bajo stock (< 10 unidades)
+app.get('/api/stock/bajo', authMiddleware, (req, res) => {
+  try {
+    const productos = getProductosBajoStock();
+    res.json({ success: true, data: productos });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener productos próximos a vencer
+app.get('/api/stock/proximos-vencer', authMiddleware, (req, res) => {
+  try {
+    const dias = parseInt(req.query.dias) || 30; // Por defecto 30 días
+    const productos = getProductosProximosVencer(dias);
+    res.json({ success: true, data: productos });
+  } catch (error) {
+    console.error('❌ Error al obtener productos próximos a vencer:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener reporte detallado de stock general
+app.get('/api/stock/detallado', authMiddleware, (req, res) => {
+  try {
+    const reporte = getStockGeneralDetallado();
+    res.json({ success: true, data: reporte });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE AUDITORÍA ======
+
+// Obtener logs de auditoría con filtros
+app.get('/api/audit/logs', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const filters = {
+      usuarioId: req.query.usuarioId,
+      modulo: req.query.modulo,
+      accion: req.query.accion,
+      fechaDesde: req.query.fechaDesde,
+      fechaHasta: req.query.fechaHasta,
+      limit: parseInt(req.query.limit) || 100,
+      offset: parseInt(req.query.offset) || 0
+    };
+    
+    const logs = getAuditLogs(filters);
+    res.json({ success: true, data: logs });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener estadísticas de auditoría
+app.get('/api/audit/stats', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const stats = getAuditStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE DASHBOARD ======
+
+// Obtener métricas generales del dashboard
+app.get('/api/dashboard/metrics', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Obteniendo métricas del dashboard...');
+    const metrics = getDashboardMetrics();
+    console.log('✅ Métricas obtenidas exitosamente');
+    res.json({ success: true, data: metrics });
+  } catch (error) {
+    console.error('❌ ERROR en /api/dashboard/metrics:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener datos para gráficos del dashboard
+app.get('/api/dashboard/charts', authMiddleware, (req, res) => {
+  try {
+    console.log('📈 Obteniendo datos de gráficos...');
+    const charts = getDashboardCharts();
+    console.log('✅ Gráficos obtenidos exitosamente');
+    res.json({ success: true, data: charts });
+  } catch (error) {
+    console.error('❌ ERROR en /api/dashboard/charts:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener actividad reciente
+app.get('/api/dashboard/activity', authMiddleware, (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    console.log(`📋 Obteniendo actividad reciente (limit: ${limit})...`);
+    const activity = getRecentActivity(limit);
+    console.log('✅ Actividad obtenida exitosamente');
+    res.json({ success: true, data: activity });
+  } catch (error) {
+    console.error('❌ ERROR en /api/dashboard/activity:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE REPORTES ======
+
+// Reporte de Inventario General
+app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando reporte de inventario...');
+    const { productoId, areaId } = req.query;
+    const data = getInventarioGeneralReport({ productoId, areaId });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'VIEW',
+      modulo: 'reportes',
+      entidadDescripcion: 'Reporte de Inventario General',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en reporte de inventario:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reporte de Ingresos
+app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando reporte de ingresos...');
+    const { fechaInicio, fechaFin, productoId, proveedorId } = req.query;
+    const data = getIngresosReport({ fechaInicio, fechaFin, productoId, proveedorId });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'VIEW',
+      modulo: 'reportes',
+      entidadDescripcion: 'Reporte de Ingresos',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en reporte de ingresos:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reporte de Pedidos
+app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando reporte de pedidos...');
+    const { fechaInicio, fechaFin, usuarioId, estado, productoId } = req.query;
+    const data = getPedidosReport({ fechaInicio, fechaFin, usuarioId, estado, productoId });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'VIEW',
+      modulo: 'reportes',
+      entidadDescripcion: 'Reporte de Pedidos',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en reporte de pedidos:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reporte de Stock por Usuario
+app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando reporte de stock por usuario...');
+    const { usuarioId } = req.query;
+    const data = getStockPorUsuarioReport({ usuarioId });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'VIEW',
+      modulo: 'reportes',
+      entidadDescripcion: 'Reporte de Stock por Usuario',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en reporte de stock usuarios:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Reporte de Movimientos
+app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando reporte de movimientos...');
+    const { fechaInicio, fechaFin, tipo } = req.query;
+    const data = getMovimientosReport({ fechaInicio, fechaFin, tipo });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'VIEW',
+      modulo: 'reportes',
+      entidadDescripcion: 'Reporte de Movimientos',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en reporte de movimientos:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Resumen Ejecutivo para Reportes
+app.get('/api/reportes/resumen', authMiddleware, (req, res) => {
+  try {
+    console.log('📊 Generando resumen ejecutivo...');
+    const { fechaInicio, fechaFin } = req.query;
+    const data = getResumenEjecutivo({ fechaInicio, fechaFin });
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('❌ ERROR en resumen ejecutivo:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Servir el frontend para todas las rutas no API (debe ir al final)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 const port = process.env.PORT || 3001;
-app.listen(port, () => console.log(`API escuchando en http://localhost:${port}/api`));
+app.listen(port, '0.0.0.0', () => {
+  console.log(`API escuchando en http://localhost:${port}/api`);
+  console.log(`Acceso desde red local: http://192.168.25.20:${port}`);
+});

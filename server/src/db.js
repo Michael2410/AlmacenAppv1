@@ -88,6 +88,16 @@ CREATE TABLE IF NOT EXISTS pedidos (
   estado TEXT NOT NULL, -- PENDIENTE | APROBADO | RECHAZADO | ENTREGADO
   fecha TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS auditoria (
+  id TEXT PRIMARY KEY,
+  fecha_hora TEXT NOT NULL,
+  usuario_id TEXT NOT NULL,
+  usuario_nombre TEXT,
+  accion TEXT NOT NULL,
+  modulo TEXT NOT NULL,
+  descripcion TEXT,
+  ip TEXT
+);
 `);
 
 // Simple migrations: add missing columns to ingresos

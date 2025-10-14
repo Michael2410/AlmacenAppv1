@@ -4,6 +4,7 @@ import { PlusOutlined, ShoppingCartOutlined, ClockCircleOutlined, CheckCircleOut
 import { useAuthStore } from '../../store/auth.store';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
+import { ProductoFormItem } from '../../components/Stock/ProductoFormItem';
 
 const { Title, Text } = Typography;
 
@@ -41,24 +42,7 @@ const MisPedidosPage: React.FC = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
 
-  // Debug de permisos y auth store
-  const user = useAuthStore(s => s.user);
-  const roles = useAuthStore(s => s.roles);
-  const hasPermission = useAuthStore(s => s.hasPermission);
   const token = useAuthStore(s => s.token);
-  
-  console.log('=== MisPedidosPage DEBUG ===');
-  console.log('Usuario:', user);
-  console.log('Token presente:', !!token);
-  console.log('Roles:', roles);
-  console.log('hasPermission pedidos.create:', hasPermission('pedidos.create'));
-  console.log('hasPermission inventory.viewSelf:', hasPermission('inventory.viewSelf'));
-  console.log('============================');
-
-  // Forzar alerta para debuggear
-  // useEffect(() => {
-  //   alert(`User: ${user?.email || 'No user'}, Permisos: ${hasPermission('pedidos.create') ? 'SÍ' : 'NO'}`);
-  // }, [user, hasPermission]);
 
   const fetchPedidos = async () => {
     setLoading(true);
@@ -68,7 +52,6 @@ const MisPedidosPage: React.FC = () => {
       });
       
       if (response.status === 401) {
-        console.log('⚠️ Token 401 en fetchPedidos');
         message.error('Sesión expirada, por favor inicia sesión nuevamente');
         navigate('/login');
         return;
@@ -87,11 +70,7 @@ const MisPedidosPage: React.FC = () => {
 
   const fetchProductos = async () => {
     try {
-      console.log('🔍 Iniciando fetchProductos...');
-      console.log('Token disponible:', !!token);
-      
       if (!token) {
-        console.log('❌ No hay token disponible');
         message.error('No estás autenticado. Inicia sesión nuevamente.');
         navigate('/login');
         return;
@@ -101,27 +80,20 @@ const MisPedidosPage: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
-      console.log('📡 Response status:', response.status);
-      
       if (response.status === 401) {
-        console.log('⚠️ Token 401 en fetchProductos');
         message.error('Sesión expirada, por favor inicia sesión nuevamente');
         navigate('/login');
         return;
       }
       
       const data = await response.json();
-      console.log('📦 Response data completa:', data);
       
       if (data.success && data.data) {
-        console.log('✅ Productos cargados exitosamente:', data.data.length, 'productos');
         setProductos(data.data);
       } else {
-        console.error('❌ Error en respuesta del servidor:', data);
         message.error(data.message || 'Error al cargar productos');
       }
     } catch (error) {
-      console.error('💥 Error de conexión en fetchProductos:', error);
       message.error('Error de conexión al cargar productos');
     }
   };
@@ -283,7 +255,6 @@ const MisPedidosPage: React.FC = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              console.log('Abriendo modal de nueva solicitud');
               setModalVisible(true);
             }}
             size="large"
@@ -351,7 +322,6 @@ const MisPedidosPage: React.FC = () => {
         title="📝 Nueva Solicitud de Producto"
         open={modalVisible}
   onCancel={() => {
-          console.log('=== CERRANDO MODAL ===');
           setModalVisible(false);
           form.resetFields();
         }}
@@ -366,7 +336,6 @@ const MisPedidosPage: React.FC = () => {
           }}
           onFinish={async (values) => {
             try {
-              console.log('Enviando pedido (batch):', values);
               const items = Array.isArray(values.items) ? values.items
                 .filter((it: any) => it && it.productoId && it.cantidad)
                 .map((it: any) => ({
@@ -389,7 +358,6 @@ const MisPedidosPage: React.FC = () => {
               });
 
               const data = await response.json();
-              console.log('Response del pedido batch:', data);
               
               if (data.success) {
                 message.success('¡Pedido(s) creado(s) exitosamente!');
@@ -408,55 +376,22 @@ const MisPedidosPage: React.FC = () => {
           <Form.List name="items">
             {(fields, { add, remove }) => (
               <>
-                {fields.map((field) => (
-                  <Row key={field.key} gutter={12} style={{ marginBottom: 8 }}>
-                    <Col span={14}>
-                      <Form.Item
-                        {...field}
-                        name={[field.name, 'productoId']}
-                        fieldKey={[field.fieldKey!, 'productoId']}
-                        rules={[{ required: true, message: 'Selecciona un producto' }]}
-                        label={field.name === 0 ? 'Producto' : undefined}
-                      >
-                        <select 
-                          title="Selecciona un producto"
-                          aria-label="Producto"
-                          style={{ width: '100%', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px' }}
-                        >
-                          <option value="">Selecciona un producto...</option>
-                          {productos.map(producto => (
-                            <option key={producto.id} value={producto.id}>
-                              {producto.nombre} - {producto.marca || 'Sin marca'} ({producto.unidad || 'UNIDAD'})
-                            </option>
-                          ))}
-                        </select>
-                      </Form.Item>
-                    </Col>
-                    <Col span={6}>
-                      <Form.Item
-                        {...field}
-                        name={[field.name, 'cantidad']}
-                        fieldKey={[field.fieldKey!, 'cantidad']}
-                        rules={[
-                          { required: true, message: 'Ingresa la cantidad' },
-                          { pattern: /^[1-9]\d*$/, message: 'Debe ser un número positivo' }
-                        ]}
-                        label={field.name === 0 ? 'Cantidad' : undefined}
-                      >
-                        <input 
-                          type="number" 
-                          min="1" 
-                          placeholder="Cantidad"
-                          style={{ width: '100%', padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px' }}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={4} style={{ display: 'flex', alignItems: 'end' }}>
-                      <Button danger onClick={() => remove(field.name)}>Eliminar</Button>
-                    </Col>
-                  </Row>
+                {fields.map((field, index) => (
+                  <ProductoFormItem
+                    key={field.key}
+                    field={field}
+                    productos={productos}
+                    onRemove={() => remove(field.name)}
+                    form={form}
+                    showLabel={index === 0}
+                  />
                 ))}
-                <Button type="dashed" onClick={() => add({ productoId: '', cantidad: '' })} block>
+                <Button 
+                  type="dashed" 
+                  onClick={() => add({ productoId: '', cantidad: '' })} 
+                  block
+                  style={{ marginTop: 16 }}
+                >
                   + Agregar producto
                 </Button>
               </>

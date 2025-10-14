@@ -1,91 +1,147 @@
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
-import { useIngresos, useProductos, usePedidos } from '../../lib/api';
-import { Table, Tag, Progress } from 'antd';
-import dayjs from 'dayjs';
-import { useMemo } from 'react';
+import { Row, Col, Typography, Divider } from 'antd';
+import {
+  ShoppingCartOutlined,
+  WarningOutlined,
+  TruckOutlined,
+  UserOutlined,
+  ClockCircleOutlined,
+} from '@ant-design/icons';
+import { useState } from 'react';
+import MetricCard from '../../components/Dashboard/MetricCard';
+import PedidosChart from '../../components/Dashboard/PedidosChart';
+import EstadosChart from '../../components/Dashboard/EstadosChart';
+import ProductosChart from '../../components/Dashboard/ProductosChart';
+import ActivityTimeline from '../../components/Dashboard/ActivityTimeline';
+import LowStockModal from '../../components/Stock/LowStockModal';
+import ExpiringProductsModal from '../../components/Stock/ExpiringProductsModal';
+import { useDashboardMetrics } from '../../hooks/useDashboard';
+import { useProductosProximosVencer } from '../../hooks/useStockDisponible';
+
+const { Title } = Typography;
 
 export default function DashboardPage() {
-  const { data: ingresosRes } = useIngresos();
-  const { data: productosRes } = useProductos();
-  const { data: pedidosRes } = usePedidos();
-  
-  const ingresosMes = useMemo(() => {
-    const ingresos = ingresosRes?.data ?? [];
-    return ingresos.filter((i: any) => 
-      dayjs(i.fechaIngreso).isAfter(dayjs().startOf('month'))
-    ).length;
-  }, [ingresosRes]);
+  const { data, isLoading } = useDashboardMetrics();
+  const { data: productosVencer } = useProductosProximosVencer(30);
+  const [lowStockModalOpen, setLowStockModalOpen] = useState(false);
+  const [expiringModalOpen, setExpiringModalOpen] = useState(false);
 
-  const pedidosPendientes = useMemo(() => {
-    const pedidos = pedidosRes?.data ?? [];
-    return pedidos.filter((p: any) => p.estado === 'PENDIENTE').length;
-  }, [pedidosRes]);
-
-  const productosActivos = productosRes?.data?.filter((p: any) => p.activo)?.length ?? 0;
-  const productosTotal = productosRes?.data?.length ?? 0;
-  const porcentajeActivos = productosTotal > 0 ? (productosActivos / productosTotal) * 100 : 0;
-
-  // Productos próximos a vencer (próximos 30 días)
-  const productosVencimiento = useMemo(() => {
-    const ingresos = ingresosRes?.data ?? [];
-    const proximos = ingresos.filter((i: any) => {
-      if (!i.fechaVencimiento) return false;
-      const diasRestantes = dayjs(i.fechaVencimiento).diff(dayjs(), 'days');
-      return diasRestantes >= 0 && diasRestantes <= 30;
-    }).sort((a: any, b: any) => dayjs(a.fechaVencimiento).valueOf() - dayjs(b.fechaVencimiento).valueOf());
-    return proximos.slice(0, 5); // Solo los primeros 5
-  }, [ingresosRes]);
-
-  const columnsVencimiento = [
-    { title: 'Producto', dataIndex: 'nombre', width: 200 },
-    { title: 'Días restantes', render: (_: any, record: any) => {
-      const dias = dayjs(record.fechaVencimiento).diff(dayjs(), 'days');
-      const color = dias <= 7 ? 'red' : dias <= 15 ? 'orange' : 'blue';
-      return <Tag color={color}>{dias} días</Tag>;
-    }},
-    { title: 'Fecha venc.', dataIndex: 'fechaVencimiento', render: (v: any) => dayjs(v).format('DD/MM/YYYY') },
-  ];
+  const metrics = data?.data || {};
+  const productosProximosVencer = productosVencer?.length || 0;
 
   return (
-    <div className="space-y-6">
-      {/* Cards de resumen */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader>Ingresos este mes</CardHeader>
-          <CardContent className="text-2xl text-blue-600">{ingresosMes}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>Pedidos pendientes</CardHeader>
-          <CardContent className="text-2xl text-orange-600">{pedidosPendientes}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>Productos activos</CardHeader>
-          <CardContent>
-            <div className="text-2xl text-green-600">{productosActivos}/{productosTotal}</div>
-            <Progress percent={Math.round(porcentajeActivos)} size="small" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>Por vencer (30 días)</CardHeader>
-          <CardContent className="text-2xl text-red-600">{productosVencimiento.length}</CardContent>
-        </Card>
-      </div>
+    <div>
+      <Title level={2}>Dashboard</Title>
+      <Divider />
 
-      {/* Tabla de productos próximos a vencer */}
-      {productosVencimiento.length > 0 && (
-        <Card>
-          <CardHeader>Productos próximos a vencer</CardHeader>
-          <CardContent>
-            <Table 
-              dataSource={productosVencimiento}
-              columns={columnsVencimiento}
-              pagination={false}
-              size="small"
-              rowKey="id"
-            />
-          </CardContent>
-        </Card>
-      )}
+      {/* KPIs Grid */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} lg={8}>
+          <MetricCard
+            title="Pedidos Pendientes"
+            value={metrics.pedidosPendientes || 0}
+            loading={isLoading}
+            icon={<ShoppingCartOutlined />}
+            color="#1890ff"
+            trend={
+              metrics.pedidosPendientesTrend
+                ? {
+                    value: metrics.pedidosPendientesTrend,
+                    isPositive: metrics.pedidosPendientesTrend > 0,
+                  }
+                : undefined
+            }
+          />
+        </Col>
+
+        <Col xs={24} sm={12} lg={8}>
+          <MetricCard
+            title="Stock Crítico"
+            value={metrics.productosStockBajo || 0}
+            loading={isLoading}
+            icon={<WarningOutlined />}
+            color="#ff4d4f"
+            suffix="productos"
+            onClick={() => setLowStockModalOpen(true)}
+            style={{ cursor: 'pointer' }}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} lg={8}>
+          <MetricCard
+            title="Próximos a Vencer"
+            value={productosProximosVencer}
+            loading={isLoading}
+            icon={<ClockCircleOutlined />}
+            color="#faad14"
+            suffix="productos"
+            onClick={() => setExpiringModalOpen(true)}
+            style={{ cursor: 'pointer' }}
+          />
+        </Col>
+
+        <Col xs={24} sm={12} lg={12}>
+          <MetricCard
+            title="Entregas Hoy"
+            value={metrics.entregasHoy || 0}
+            loading={isLoading}
+            icon={<TruckOutlined />}
+            color="#52c41a"
+            trend={
+              metrics.entregasHoyTrend
+                ? {
+                    value: metrics.entregasHoyTrend,
+                    isPositive: metrics.entregasHoyTrend > 0,
+                  }
+                : undefined
+            }
+          />
+        </Col>
+
+        <Col xs={24} sm={12} lg={12}>
+          <MetricCard
+            title="Usuarios Activos"
+            value={metrics.usuariosActivos || 0}
+            loading={isLoading}
+            icon={<UserOutlined />}
+            color="#722ed1"
+          />
+        </Col>
+      </Row>
+
+      {/* Gráficos y Actividad */}
+      <Row gutter={[16, 16]} style={{ marginTop: '24px' }}>
+        {/* Gráfico de Pedidos (Línea) */}
+        <Col xs={24} lg={12}>
+          <PedidosChart />
+        </Col>
+
+        {/* Gráfico de Estados (Dona) */}
+        <Col xs={24} lg={12}>
+          <EstadosChart />
+        </Col>
+
+        {/* Gráfico de Productos (Barras) */}
+        <Col xs={24} lg={16}>
+          <ProductosChart />
+        </Col>
+
+        {/* Timeline de Actividad */}
+        <Col xs={24} lg={8}>
+          <ActivityTimeline />
+        </Col>
+      </Row>
+
+      {/* Modal de Stock Bajo */}
+      <LowStockModal 
+        open={lowStockModalOpen} 
+        onClose={() => setLowStockModalOpen(false)} 
+      />
+
+      {/* Modal de Productos Próximos a Vencer */}
+      <ExpiringProductsModal 
+        open={expiringModalOpen} 
+        onClose={() => setExpiringModalOpen(false)} 
+      />
     </div>
   );
 }

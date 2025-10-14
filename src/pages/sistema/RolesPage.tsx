@@ -98,7 +98,6 @@ const RolesPage: React.FC = () => {
   // Función para actualizar roles en el auth store después de cambios
   const updateAuthStoreRoles = (newRoles: Role[]) => {
     if (user && token) {
-      console.log('🔄 Actualizando roles en auth store:', newRoles.length);
       login(user, token, newRoles);
     }
   };

@@ -9,7 +9,6 @@ export default function Topbar() {
   const navigate = useNavigate();
   
   const handleLogout = () => {
-    console.log('🚪 Cerrando sesión...');
     logout();
     setToken(null);
     navigate('/login', { replace: true });
@@ -17,7 +16,7 @@ export default function Topbar() {
   
   return (
     <Flex align="center" justify="space-between" className="h-full">
-      <Typography.Title level={4} style={{ margin: 0 }}>Almacén</Typography.Title>
+      <Typography.Title level={4} style={{ margin: 0 }}>StokUp</Typography.Title>
       {user ? (
         <Flex gap={8} align="center">
           <span>{user.nombres}</span>

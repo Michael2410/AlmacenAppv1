@@ -1,6 +1,6 @@
-import { Button, Form, Input, Modal, Table, Space } from 'antd';
+import { Button, Form, Input, Modal, Table, Space, Card } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
 import { useProveedores, useCreateProveedor, useRemoveProveedor, useUpdateProveedor } from '../../lib/api';
 import { useState } from 'react';
 
@@ -47,18 +47,28 @@ export default function ProveedoresListPage() {
     { title: 'Dirección', dataIndex: 'direccion', ...textFilter('direccion', 'dirección') },
     { title: 'Contacto', dataIndex: 'contacto', ...textFilter('contacto', 'contacto') },
     { title: 'Teléfono', dataIndex: 'telefono', ...textFilter('telefono', 'teléfono') },
-    { title: 'Acciones', render: (_: any, r: any) => (
-      <div className="flex gap-2">
-        <Button size="small" onClick={() => { setEditing(r); setOpen(true); form.setFieldsValue(r); }}>Editar</Button>
-        <Button size="small" danger onClick={() => remove(r.id)}>Eliminar</Button>
-      </div>
-    ) },
+    {
+      title: 'Acciones', render: (_: any, r: any) => (
+        <div className="flex gap-2">
+          <Button size="small" onClick={() => { setEditing(r); setOpen(true); form.setFieldsValue(r); }}>Editar</Button>
+          <Button size="small" danger onClick={() => remove(r.id)}>Eliminar</Button>
+        </div>
+      )
+    },
   ];
   return (
-    <div className="space-y-2">
-      <Button type="primary" onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo</Button>
-      <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
-
+    <div className="space-y-4">
+      <Card
+        title="Gestión de Proveedores"
+        extra={
+          <Button 
+          type="primary" 
+          icon={<PlusOutlined />}
+          onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo</Button>
+        }
+      >
+        <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
+      </Card>
       <Modal title={editing ? 'Editar Proveedor' : 'Nuevo Proveedor'} open={open} onOk={onSave} onCancel={() => { setOpen(false); setEditing(null); }}>
         <Form form={form} layout="vertical">
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>

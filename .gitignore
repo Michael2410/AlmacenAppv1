@@ -22,3 +22,44 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Production
+server/public/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+server/almacen.db
+server/almacen.db-*
+
+# Environment variables
+.env
+.env.local
+.env.production
+server/.env
+server/.env.local
+server/.env.production
+
+# PM2
+.pm2/
+server/logs/
+ecosystem.config.js
+
+# Backups
+backups/
+*.backup
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
