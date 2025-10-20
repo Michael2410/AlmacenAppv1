@@ -61,12 +61,13 @@ export function validarStockDisponible(productoId, cantidadSolicitada, marca = n
  * @returns {Array} Lista de productos con stock bajo
  */
 export function getProductosBajoStock() {
-  const productos = db.prepare('SELECT id, nombre, marca, unidad FROM productos WHERE activo = 1').all();
+  const productos = db.prepare('SELECT id, nombre, marca, unidad, dias_alerta_stock FROM productos WHERE activo = 1').all();
   const productosBajos = [];
-  const stockMinimo = 10; // Umbral de stock bajo
 
   for (const producto of productos) {
     const disponible = getStockDisponible(producto.id, producto.marca);
+    const stockMinimo = producto.dias_alerta_stock || 10; // Usar umbral personalizado o default 10
+    
     if (disponible < stockMinimo && disponible >= 0) {
       productosBajos.push({
         producto_id: producto.id,        // Frontend espera producto_id
@@ -90,14 +91,15 @@ export function getProductosBajoStock() {
  */
 export function getProductosProximosVencer(diasUmbral = 30) {
   const hoy = new Date();
-  const fechaLimite = new Date();
-  fechaLimite.setDate(hoy.getDate() + diasUmbral);
 
   const query = `
     SELECT 
       i.id as ingresoId,
       i.productoId,
       p.nombre as productoNombre,
+      p.dias_vencimiento_critico,
+      p.dias_vencimiento_urgente,
+      p.dias_vencimiento_atencion,
       i.marca,
       i.cantidad,
       i.unidad,
@@ -118,11 +120,25 @@ export function getProductosProximosVencer(diasUmbral = 30) {
 
   for (const ingreso of ingresos) {
     const fechaVenc = new Date(ingreso.fechaVencimiento);
+    const diasRestantes = Math.ceil((fechaVenc - hoy) / (1000 * 60 * 60 * 24));
     
-    // Solo incluir si está entre hoy y la fecha límite
-    if (fechaVenc >= hoy && fechaVenc <= fechaLimite) {
-      const diasRestantes = Math.ceil((fechaVenc - hoy) / (1000 * 60 * 60 * 24));
-      
+    // Obtener umbrales personalizados o usar defaults
+    const diasCritico = ingreso.dias_vencimiento_critico || 7;
+    const diasUrgente = ingreso.dias_vencimiento_urgente || 15;
+    const diasAtencion = ingreso.dias_vencimiento_atencion || 30;
+    
+    // Determinar urgencia según umbrales personalizados
+    let urgencia = null;
+    if (diasRestantes <= diasCritico && diasRestantes > 0) {
+      urgencia = 'crítica';
+    } else if (diasRestantes <= diasUrgente && diasRestantes > 0) {
+      urgencia = 'alta';
+    } else if (diasRestantes <= diasAtencion && diasRestantes > 0) {
+      urgencia = 'media';
+    }
+    
+    // Solo incluir si tiene urgencia y no ha vencido
+    if (urgencia && diasRestantes > 0) {
       productosVencer.push({
         ingreso_id: ingreso.ingresoId,
         producto_id: ingreso.productoId,
@@ -133,7 +149,12 @@ export function getProductosProximosVencer(diasUmbral = 30) {
         fecha_vencimiento: ingreso.fechaVencimiento,
         fecha_ingreso: ingreso.fechaIngreso,
         dias_restantes: diasRestantes,
-        urgencia: diasRestantes <= 7 ? 'crítica' : diasRestantes <= 15 ? 'alta' : 'media'
+        urgencia: urgencia,
+        umbrales: {
+          critico: diasCritico,
+          urgente: diasUrgente,
+          atencion: diasAtencion
+        }
       });
     }
   }

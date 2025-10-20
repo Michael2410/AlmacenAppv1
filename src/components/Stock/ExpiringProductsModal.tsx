@@ -150,19 +150,6 @@ export default function ExpiringProductsModal({ open, onClose }: ExpiringProduct
             </Text>
           </div>
 
-          {/* Resumen por urgencia */}
-          <Space style={{ marginBottom: '16px' }}>
-            <Tag color="red">
-              Crítico (≤7 días): {productos.filter((p: any) => p.urgencia === 'crítica').length}
-            </Tag>
-            <Tag color="orange">
-              Urgente (≤15 días): {productos.filter((p: any) => p.urgencia === 'alta').length}
-            </Tag>
-            <Tag color="gold">
-              Atención (≤30 días): {productos.filter((p: any) => p.urgencia === 'media').length}
-            </Tag>
-          </Space>
-
           <Table
             dataSource={productos}
             columns={columns}
@@ -173,6 +160,15 @@ export default function ExpiringProductsModal({ open, onClose }: ExpiringProduct
               showTotal: (total) => `Total: ${total} productos`,
             }}
             size="small"
+            rowClassName={(record: any) => {
+              console.log('Record completo:', record);
+              console.log('Urgencia:', record.urgencia, 'Tipo:', typeof record.urgencia);
+              const className = record.urgencia === 'crítica' ? 'bg-red-50' : 
+                               record.urgencia === 'alta' ? 'bg-orange-50' : 
+                               record.urgencia === 'media' ? 'bg-yellow-50' : '';
+              console.log('Clase aplicada:', className);
+              return className;
+            }}
           />
         </>
       )}

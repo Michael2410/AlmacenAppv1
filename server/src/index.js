@@ -361,7 +361,16 @@ app.delete('/api/proveedores/:id', authMiddleware, requireAdmin, (req, res) => {
 // Productos CRUD
 app.get('/api/productos', authMiddleware, (req, res) => {
   try {
-    const list = db.prepare('SELECT * FROM productos').all();
+    const list = db.prepare(`
+      SELECT 
+        p.*,
+        a.nombre as area,
+        u.nombre as ubicacion
+      FROM productos p
+      LEFT JOIN areas a ON p.areaId = a.id
+      LEFT JOIN ubicaciones u ON p.ubicacionId = u.id
+      ORDER BY p.nombre
+    `).all();
     res.json({ success: true, data: list });
   } catch (error) {
     console.error('Error al obtener productos:', error);
@@ -369,15 +378,61 @@ app.get('/api/productos', authMiddleware, (req, res) => {
   }
 });
 app.post('/api/productos', authMiddleware, requireAdmin, (req, res) => {
-  const { nombre, unidad, areaId, ubicacionId, activo = true, marca } = req.body;
+  const { 
+    nombre, 
+    unidad, 
+    areaId, 
+    ubicacionId, 
+    activo = true, 
+    marca,
+    dias_alerta_stock,
+    dias_vencimiento_critico,
+    dias_vencimiento_urgente,
+    dias_vencimiento_atencion
+  } = req.body;
+  
   const id = `pr${Date.now()}`;
-  db.prepare('INSERT INTO productos (id, nombre, unidad, areaId, ubicacionId, activo, marca) VALUES (?,?,?,?,?,?,?)')
-    .run(id, nombre, unidad, areaId, ubicacionId, activo ? 1 : 0, marca ?? null);
-  res.json({ success: true, data: { id, nombre, unidad, areaId, ubicacionId, activo: !!activo, marca: marca ?? null } });
+  const alertaStock = dias_alerta_stock !== undefined ? parseInt(dias_alerta_stock) : 10;
+  const vencCritico = dias_vencimiento_critico !== undefined ? parseInt(dias_vencimiento_critico) : 7;
+  const vencUrgente = dias_vencimiento_urgente !== undefined ? parseInt(dias_vencimiento_urgente) : 15;
+  const vencAtencion = dias_vencimiento_atencion !== undefined ? parseInt(dias_vencimiento_atencion) : 30;
+  
+  db.prepare(`
+    INSERT INTO productos (
+      id, nombre, unidad, areaId, ubicacionId, activo, marca,
+      dias_alerta_stock, dias_vencimiento_critico, dias_vencimiento_urgente, dias_vencimiento_atencion
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    id, nombre, unidad, areaId, ubicacionId, activo ? 1 : 0, marca ?? null,
+    alertaStock, vencCritico, vencUrgente, vencAtencion
+  );
+  
+  res.json({ 
+    success: true, 
+    data: { 
+      id, nombre, unidad, areaId, ubicacionId, activo: !!activo, marca: marca ?? null,
+      dias_alerta_stock: alertaStock,
+      dias_vencimiento_critico: vencCritico,
+      dias_vencimiento_urgente: vencUrgente,
+      dias_vencimiento_atencion: vencAtencion
+    } 
+  });
 });
 app.put('/api/productos/:id', authMiddleware, requireAdmin, (req, res) => {
   const { id } = req.params;
-  const { nombre, unidad, areaId, ubicacionId, activo, marca } = req.body;
+  const { 
+    nombre, 
+    unidad, 
+    areaId, 
+    ubicacionId, 
+    activo, 
+    marca,
+    dias_alerta_stock,
+    dias_vencimiento_critico,
+    dias_vencimiento_urgente,
+    dias_vencimiento_atencion
+  } = req.body;
+  
   const sets = [];
   const vals = [];
   if (nombre != null) { sets.push('nombre = ?'); vals.push(nombre); }
@@ -386,6 +441,10 @@ app.put('/api/productos/:id', authMiddleware, requireAdmin, (req, res) => {
   if (ubicacionId != null) { sets.push('ubicacionId = ?'); vals.push(ubicacionId); }
   if (activo != null) { sets.push('activo = ?'); vals.push(!!activo ? 1 : 0); }
   if (marca !== undefined) { sets.push('marca = ?'); vals.push(marca ?? null); }
+  if (dias_alerta_stock !== undefined) { sets.push('dias_alerta_stock = ?'); vals.push(parseInt(dias_alerta_stock) || 10); }
+  if (dias_vencimiento_critico !== undefined) { sets.push('dias_vencimiento_critico = ?'); vals.push(parseInt(dias_vencimiento_critico) || 7); }
+  if (dias_vencimiento_urgente !== undefined) { sets.push('dias_vencimiento_urgente = ?'); vals.push(parseInt(dias_vencimiento_urgente) || 15); }
+  if (dias_vencimiento_atencion !== undefined) { sets.push('dias_vencimiento_atencion = ?'); vals.push(parseInt(dias_vencimiento_atencion) || 30); }
   if (!sets.length) return res.json({ success: true, data: null });
   db.prepare(`UPDATE productos SET ${sets.join(', ')} WHERE id = ?`).run(...vals, id);
   const p = db.prepare('SELECT * FROM productos WHERE id = ?').get(id);

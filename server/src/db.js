@@ -131,6 +131,30 @@ try {
   if (!hasMarcaProd) db.exec("ALTER TABLE productos ADD COLUMN marca TEXT");
 } catch { /* noop */ }
 
+// productos: add alertas personalizadas columns if missing
+try {
+  const colsProd = db.prepare("PRAGMA table_info('productos')").all();
+  const hasDiasAlertaStock = colsProd.some((c) => c.name === 'dias_alerta_stock');
+  const hasDiasVencCritico = colsProd.some((c) => c.name === 'dias_vencimiento_critico');
+  const hasDiasVencUrgente = colsProd.some((c) => c.name === 'dias_vencimiento_urgente');
+  const hasDiasVencAtencion = colsProd.some((c) => c.name === 'dias_vencimiento_atencion');
+  
+  if (!hasDiasAlertaStock) {
+    db.exec("ALTER TABLE productos ADD COLUMN dias_alerta_stock INTEGER DEFAULT 10");
+  }
+  if (!hasDiasVencCritico) {
+    db.exec("ALTER TABLE productos ADD COLUMN dias_vencimiento_critico INTEGER DEFAULT 7");
+  }
+  if (!hasDiasVencUrgente) {
+    db.exec("ALTER TABLE productos ADD COLUMN dias_vencimiento_urgente INTEGER DEFAULT 15");
+  }
+  if (!hasDiasVencAtencion) {
+    db.exec("ALTER TABLE productos ADD COLUMN dias_vencimiento_atencion INTEGER DEFAULT 30");
+  }
+} catch (e) {
+  console.error('Error al agregar columnas de alertas:', e);
+}
+
 // users: add permissions column if missing
 try {
   const colsUsers = db.prepare("PRAGMA table_info('users')").all();

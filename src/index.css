@@ -117,3 +117,40 @@ body {
   border-color: #001529 !important;
   box-shadow: 0 0 0 2px rgba(0, 21, 41, 0.2) !important;
 }
+
+/* ============================================
+   ESTILOS PARA FILAS DE PRODUCTOS POR VENCER
+   ============================================ */
+
+/* Fila con urgencia crítica (rojo) */
+.ant-table-tbody > tr.bg-red-50 > td,
+.ant-table-tbody > tr.bg-red-50:nth-child(even) > td {
+  background-color: #fef2f2 !important;
+}
+
+.ant-table-tbody > tr.bg-red-50:hover > td,
+.ant-table-tbody > tr.bg-red-50:nth-child(even):hover > td {
+  background-color: #fee2e2 !important;
+}
+
+/* Fila con urgencia alta (naranja) */
+.ant-table-tbody > tr.bg-orange-50 > td,
+.ant-table-tbody > tr.bg-orange-50:nth-child(even) > td {
+  background-color: #fff7ed !important;
+}
+
+.ant-table-tbody > tr.bg-orange-50:hover > td,
+.ant-table-tbody > tr.bg-orange-50:nth-child(even):hover > td {
+  background-color: #ffedd5 !important;
+}
+
+/* Fila con urgencia media (amarillo) */
+.ant-table-tbody > tr.bg-yellow-50 > td,
+.ant-table-tbody > tr.bg-yellow-50:nth-child(even) > td {
+  background-color: #fefce8 !important;
+}
+
+.ant-table-tbody > tr.bg-yellow-50:hover > td,
+.ant-table-tbody > tr.bg-yellow-50:nth-child(even):hover > td {
+  background-color: #fef9c3 !important;
+}

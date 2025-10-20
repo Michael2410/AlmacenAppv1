@@ -31,4 +31,10 @@ export interface Producto {
   areaId: ID;
   ubicacionId: ID;
   activo: boolean;
+  dias_alerta_stock?: number;
+  dias_vencimiento_critico?: number;
+  dias_vencimiento_urgente?: number;
+  dias_vencimiento_atencion?: number;
+  area?: string;
+  ubicacion?: string;
 }

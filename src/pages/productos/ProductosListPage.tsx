@@ -1,4 +1,4 @@
-import { Button, Form, Input, Modal, Select, Switch, Table, Space, message, Card } from 'antd';
+import { Button, Form, Input, Modal, Select, Switch, Table, Space, message, Card, InputNumber, Divider, Row, Col, Tag } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { SearchOutlined,PlusOutlined } from '@ant-design/icons';
 import { useProductos, useCreateProducto, useUpdateProducto, useRemoveProducto, useReferencias } from '../../lib/api';
@@ -58,6 +58,25 @@ export default function ProductosListPage() {
       render: (ubicacionId: string) => getUbicacionName(ubicacionId),
       ...textFilter('ubicacionId', 'ubicación')
     },
+    {
+      title: 'Stock Mínimo',
+      dataIndex: 'dias_alerta_stock',
+      align: 'center',
+      render: (value: number) => (
+        <Tag color="blue">{value || 10} unidades</Tag>
+      ),
+    },
+    {
+      title: 'Alertas Vencimiento',
+      align: 'center',
+      render: (_: any, record: any) => (
+        <Space direction="vertical" size="small">
+          <Tag color="red" style={{ margin: 0 }}>🔴 {record.dias_vencimiento_critico || 7}d</Tag>
+          <Tag color="orange" style={{ margin: 0 }}>🟠 {record.dias_vencimiento_urgente || 15}d</Tag>
+          <Tag color="gold" style={{ margin: 0 }}>🟡 {record.dias_vencimiento_atencion || 30}d</Tag>
+        </Space>
+      ),
+    },
     { title: 'Activo', dataIndex: 'activo', render: (v: any) => (v ? 'Sí' : 'No'), filters: [{ text: 'Sí', value: true }, { text: 'No', value: false }], onFilter: (v, r) => r.activo === v },
     {
       title: 'Acciones', render: (_: any, r: any) => (
@@ -97,7 +116,7 @@ export default function ProductosListPage() {
           message.error(msg);
         }
       }} onCancel={() => { setOpen(false); setEditing(null); }}>
-        <Form form={form} layout="vertical" initialValues={{ activo: true }}>
+        <Form form={form} layout="vertical" initialValues={{ activo: true, dias_alerta_stock: 10, dias_vencimiento_critico: 7, dias_vencimiento_urgente: 15, dias_vencimiento_atencion: 30 }}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -116,6 +135,104 @@ export default function ProductosListPage() {
           <Form.Item name="activo" label="Activo" valuePropName="checked">
             <Switch />
           </Form.Item>
+          
+          <Divider orientation="left">⚠️ Configuración de Alertas</Divider>
+          
+          <Form.Item
+            label="Stock Mínimo (Unidades)"
+            name="dias_alerta_stock"
+            tooltip="Cuando el stock disponible sea menor o igual a este valor, se mostrará una alerta"
+            rules={[
+              { required: true, message: 'Ingrese el stock mínimo' },
+              { type: 'number', min: 0, message: 'Debe ser mayor o igual a 0' }
+            ]}
+          >
+            <InputNumber 
+              style={{ width: '100%' }} 
+              placeholder="Ej: 10"
+              min={0}
+              addonAfter="unidades"
+            />
+          </Form.Item>
+
+          <Divider orientation="left">📅 Alertas de Vencimiento (Días)</Divider>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label="🔴 Crítico"
+                name="dias_vencimiento_critico"
+                tooltip="Días antes del vencimiento para alerta crítica (rojo)"
+                rules={[
+                  { required: true, message: 'Requerido' },
+                  { type: 'number', min: 1, message: 'Debe ser mayor a 0' }
+                ]}
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="7"
+                  min={1}
+                  addonAfter="días"
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col span={8}>
+              <Form.Item
+                label="🟠 Urgente"
+                name="dias_vencimiento_urgente"
+                tooltip="Días antes del vencimiento para alerta urgente (naranja)"
+                rules={[
+                  { required: true, message: 'Requerido' },
+                  { type: 'number', min: 1, message: 'Debe ser mayor a 0' },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const critico = getFieldValue('dias_vencimiento_critico');
+                      if (!value || value > critico) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error('Debe ser mayor que Crítico'));
+                    },
+                  }),
+                ]}
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="15"
+                  min={1}
+                  addonAfter="días"
+                />
+              </Form.Item>
+            </Col>
+            
+            <Col span={8}>
+              <Form.Item
+                label="🟡 Atención"
+                name="dias_vencimiento_atencion"
+                tooltip="Días antes del vencimiento para alerta de atención (amarillo)"
+                rules={[
+                  { required: true, message: 'Requerido' },
+                  { type: 'number', min: 1, message: 'Debe ser mayor a 0' },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const urgente = getFieldValue('dias_vencimiento_urgente');
+                      if (!value || value > urgente) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error('Debe ser mayor que Urgente'));
+                    },
+                  }),
+                ]}
+              >
+                <InputNumber 
+                  style={{ width: '100%' }} 
+                  placeholder="30"
+                  min={1}
+                  addonAfter="días"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
