@@ -4,8 +4,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import db from './db.js';
-import { validarStockDisponible, getStockDisponible, getProductosBajoStock, getStockGeneralDetallado, getProductosProximosVencer } from './utils/stockValidator.js';
+import { validarStockDisponible, getStockDisponible, getProductosBajoStock, getStockGeneralDetallado, getProductosProximosVencer, getProductosVencidos } from './utils/stockValidator.js';
 import { initAuditTable, logAudit, getAuditLogs, getAuditStats, auditMiddleware } from './utils/auditLogger.js';
 import { getDashboardMetrics, getDashboardCharts, getRecentActivity } from './utils/dashboardMetrics.js';
 import { 
@@ -338,17 +340,17 @@ app.get('/api/proveedores', authMiddleware, (req, res) => {
   res.json({ success: true, data: list });
 });
 app.post('/api/proveedores', authMiddleware, requireAdmin, (req, res) => {
-  const { nombre, direccion, contacto, telefono } = req.body;
+  const { nombre, ruc, direccion, contacto, telefono } = req.body;
   const id = `p${Date.now()}`;
-  db.prepare('INSERT INTO proveedores (id, nombre, direccion, contacto, telefono) VALUES (?,?,?,?,?)')
-    .run(id, nombre, direccion, contacto, telefono ?? null);
-  res.json({ success: true, data: { id, nombre, direccion, contacto, telefono } });
+  db.prepare('INSERT INTO proveedores (id, nombre, ruc, direccion, contacto, telefono) VALUES (?,?,?,?,?,?)')
+    .run(id, nombre, ruc ?? null, direccion, contacto, telefono ?? null);
+  res.json({ success: true, data: { id, nombre, ruc, direccion, contacto, telefono } });
 });
 app.put('/api/proveedores/:id', authMiddleware, requireAdmin, (req, res) => {
   const { id } = req.params;
-  const { nombre, direccion, contacto, telefono } = req.body;
-  db.prepare('UPDATE proveedores SET nombre=?, direccion=?, contacto=?, telefono=? WHERE id=?')
-    .run(nombre, direccion, contacto, telefono ?? null, id);
+  const { nombre, ruc, direccion, contacto, telefono } = req.body;
+  db.prepare('UPDATE proveedores SET nombre=?, ruc=?, direccion=?, contacto=?, telefono=? WHERE id=?')
+    .run(nombre, ruc ?? null, direccion, contacto, telefono ?? null, id);
   const p = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(id);
   res.json({ success: true, data: p });
 });
@@ -483,9 +485,10 @@ app.post('/api/ingresos', authMiddleware, requireAdmin, (req, res) => {
   const ubicacionId = producto.ubicacionId;
   const unidad = producto.unidad;
   
-  db.prepare('INSERT INTO ingresos (id, productoId, proveedorId, nombre, fechaIngreso, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, productoId, proveedorId, nombreFinal, fechaIngreso, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca);
-  res.json({ success: true, data: { id, productoId, proveedorId, nombre: nombreFinal, fechaIngreso, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca } });
+  // Inicializar cantidad_disponible con el mismo valor que cantidad
+  db.prepare('INSERT INTO ingresos (id, productoId, proveedorId, nombre, fechaIngreso, cantidad, cantidad_disponible, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, productoId, proveedorId, nombreFinal, fechaIngreso, cantidad, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca);
+  res.json({ success: true, data: { id, productoId, proveedorId, nombre: nombreFinal, fechaIngreso, cantidad, cantidad_disponible: cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca } });
 });
 
 // Referencias
@@ -512,7 +515,7 @@ app.get('/api/pedidos/mios', authMiddleware, (req, res) => {
     productoId: p.productoId,
     cantidad: p.cantidad,
     estado: p.estado,
-    fechaSolicitud: p.fechaSolicitud || p.fecha,
+    fechaSolicitud: p.fechaSolicitud,
     fechaRespuesta: p.fechaRespuesta,
     observaciones: p.observaciones,
     loteId: p.loteId, // Agregar loteId para agrupar pedidos
@@ -535,11 +538,11 @@ app.get('/api/pedidos/admin', authMiddleware, (req, res) => {
     const pedidos = db.prepare(`
       SELECT p.*, pr.nombre as producto_nombre, pr.unidad as producto_unidad, pr.marca as producto_marca,
              u.nombres as usuario_nombres,
-             COALESCE(p.fechaSolicitud, p.fecha) as fecha_pedido
+             p.fechaSolicitud as fecha_pedido
       FROM pedidos p
       JOIN productos pr ON p.productoId = pr.id
       JOIN users u ON p.usuarioId = u.id
-      ORDER BY fecha_pedido DESC
+      ORDER BY p.fechaSolicitud DESC
     `).all();
     
     const pedidosFormatted = pedidos.map(p => ({
@@ -766,11 +769,7 @@ app.get('/api/stock/general', authMiddleware, requireAdmin, (req, res) => {
   const productos = db.prepare('SELECT * FROM productos').all();
   const rows = db.prepare(`
     SELECT i.productoId, i.marca, i.unidad,
-           COALESCE(SUM(i.cantidad),0) - COALESCE((
-             SELECT SUM(us.cantidad) FROM user_stock us WHERE us.productoId = i.productoId AND (
-               (us.marca IS NULL AND i.marca IS NULL) OR (us.marca = i.marca)
-             )
-           ),0) AS disponible
+           COALESCE(SUM(i.cantidad_disponible), 0) AS disponible
       FROM ingresos i
   GROUP BY i.productoId, i.marca, i.unidad
   `).all();
@@ -794,15 +793,71 @@ app.get('/api/stock/general', authMiddleware, requireAdmin, (req, res) => {
 app.post('/api/asignaciones', authMiddleware, requireAdmin, (req, res) => {
   const { usuarioId, productoId, cantidad, unidad, marca = null, areaId = 'a1', ubicacionId = 'u1' } = req.body;
   if (!usuarioId || !productoId || !cantidad || !unidad) return res.status(400).json({ success: false, message: 'Datos incompletos' });
-  const totIng = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM ingresos WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(productoId, marca, marca).s;
-  const totAsg = db.prepare('SELECT COALESCE(SUM(cantidad),0) as s FROM user_stock WHERE productoId = ? AND (marca IS ? OR marca = ?)').get(productoId, marca, marca).s;
-  const disponible = (totIng || 0) - (totAsg || 0);
-  if (cantidad > disponible) {
-    return res.status(400).json({ success: false, message: 'Stock insuficiente' });
+  
+  // Calcular stock disponible usando cantidad_disponible
+  const totDisponible = db.prepare(`
+    SELECT COALESCE(SUM(cantidad_disponible), 0) as s 
+    FROM ingresos 
+    WHERE productoId = ? 
+    AND (marca IS ? OR marca = ?)
+    AND cantidad_disponible > 0
+  `).get(productoId, marca, marca).s;
+  
+  if (cantidad > totDisponible) {
+    return res.status(400).json({ success: false, message: `Stock insuficiente. Disponible: ${totDisponible}` });
   }
+  
+  // Descontar de ingresos usando FEFO (First Expired, First Out)
+  // Validar que no esté vencido ni bloqueado
+  let cantidadRestante = cantidad;
+  const ingresosDisponibles = db.prepare(`
+    SELECT id, cantidad_disponible, fechaVencimiento, bloqueado, motivo_bloqueo
+    FROM ingresos 
+    WHERE productoId = ? 
+    AND (marca IS ? OR marca = ?)
+    AND cantidad_disponible > 0
+    AND bloqueado = 0
+    ORDER BY 
+      CASE WHEN fechaVencimiento IS NULL THEN 1 ELSE 0 END,
+      fechaVencimiento ASC
+  `).all(productoId, marca, marca);
+  
+  const hoy = new Date();
+  
+  for (const ingreso of ingresosDisponibles) {
+    if (cantidadRestante <= 0) break;
+    
+    // Validar que no esté vencido
+    if (ingreso.fechaVencimiento) {
+      const fechaVenc = new Date(ingreso.fechaVencimiento);
+      if (fechaVenc < hoy) {
+        console.warn(`⚠️  Saltando ingreso ${ingreso.id} - Producto vencido`);
+        continue; // Saltar este ingreso
+      }
+    }
+    
+    const aDescontar = Math.min(cantidadRestante, ingreso.cantidad_disponible);
+    
+    // Descontar de cantidad_disponible
+    db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?')
+      .run(aDescontar, ingreso.id);
+    
+    cantidadRestante -= aDescontar;
+  }
+  
+  // Validar que se haya podido asignar todo
+  if (cantidadRestante > 0) {
+    return res.status(400).json({ 
+      success: false, 
+      message: `No se pudo asignar toda la cantidad. Faltaron ${cantidadRestante} unidades (posiblemente por productos vencidos o bloqueados)` 
+    });
+  }
+  
+  // Agregar a user_stock
   const id = `s${Date.now()}`;
   db.prepare('INSERT INTO user_stock (id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca) VALUES (?,?,?,?,?,?,?,?)')
     .run(id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca);
+  
   res.json({ success: true, data: { id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca } });
 });
 
@@ -820,8 +875,8 @@ app.get('/api/pedidos', authMiddleware, (req, res) => {
 app.get('/api/pedidos/agrupados', authMiddleware, (req, res) => {
   const isAdmin = hasAdminPermissions(req.user);
   const allPedidos = isAdmin
-    ? db.prepare('SELECT * FROM pedidos ORDER BY fecha DESC').all()
-    : db.prepare('SELECT * FROM pedidos WHERE usuarioId = ? ORDER BY fecha DESC').all(req.user.id);
+    ? db.prepare('SELECT * FROM pedidos ORDER BY fechaSolicitud DESC').all()
+    : db.prepare('SELECT * FROM pedidos WHERE usuarioId = ? ORDER BY fechaSolicitud DESC').all(req.user.id);
   
   // Agrupar por loteId
   const grupos = {};
@@ -831,7 +886,7 @@ app.get('/api/pedidos/agrupados', authMiddleware, (req, res) => {
       grupos[loteId] = {
         loteId,
         usuarioId: pedido.usuarioId,
-        fecha: pedido.fecha,
+        fecha: pedido.fechaSolicitud,
         estado: pedido.estado, // tomamos el estado del primer pedido del grupo
         items: []
       };
@@ -866,13 +921,13 @@ app.post('/api/pedidos', authMiddleware, (req, res) => {
     }
 
     const id = `req${Date.now()}`;
-    const fecha = new Date().toISOString();
+    const fechaSolicitud = new Date().toISOString();
     const loteId = `lote${Date.now()}`;
 
-  db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fecha, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)')
-  .run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fecha, loteId, marca);
+  db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fechaSolicitud, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)')
+  .run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fechaSolicitud, loteId, marca);
 
-  const result = { id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fecha, loteId, marca, observaciones };
+  const result = { id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fechaSolicitud, loteId, marca, observaciones };
 
     res.json({ success: true, data: result });
   } catch (error) {
@@ -887,8 +942,8 @@ app.post('/api/pedidos/batch', authMiddleware, (req, res) => {
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'No hay items que procesar' });
     }
-    const stmt = db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fecha, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)');
-    const fecha = new Date().toISOString();
+    const stmt = db.prepare('INSERT INTO pedidos (id, usuarioId, productoId, cantidad, unidad, estado, fechaSolicitud, loteId, marca) VALUES (?,?,?,?,?,?,?,?,?)');
+    const fechaSolicitud = new Date().toISOString();
     const loteId = `lote${Date.now()}`;
     const created = [];
     for (const it of items) {
@@ -913,8 +968,8 @@ app.post('/api/pedidos/batch', authMiddleware, (req, res) => {
       }
       
       const id = `req${Date.now()}${Math.floor(Math.random()*1000)}`;
-      stmt.run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fecha, loteId, marca);
-      created.push({ id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fecha, loteId, marca });
+      stmt.run(id, req.user.id, productoId, cantidad, unidad, 'pendiente', fechaSolicitud, loteId, marca);
+      created.push({ id, usuarioId: req.user.id, productoId, cantidad, unidad, estado: 'pendiente', fechaSolicitud, loteId, marca });
     }
     if (!created.length) {
       return res.status(400).json({ success: false, message: 'Items inválidos' });
@@ -950,19 +1005,55 @@ app.post('/api/pedidos/lote/:loteId/entregar', authMiddleware, requireAdmin, (re
     return res.status(404).json({ success: false, message: 'Lote no encontrado' });
   }
 
-  // Validar stock disponible para todos los pedidos del lote
+  // Validar stock disponible para todos los pedidos del lote usando cantidad_disponible
   for (const pedido of pedidos) {
-    try {
-      validarStockDisponible(pedido.productoId, pedido.cantidad, pedido.marca);
-    } catch (error) {
-      return res.status(400).json({ success: false, message: error.message });
+    const marca = pedido.marca || null;
+    const disponible = db.prepare(`
+      SELECT COALESCE(SUM(cantidad_disponible), 0) as s 
+      FROM ingresos 
+      WHERE productoId = ? 
+      AND (marca IS ? OR marca = ?)
+      AND cantidad_disponible > 0
+    `).get(pedido.productoId, marca, marca).s;
+    
+    if (pedido.cantidad > disponible) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Stock insuficiente para ${pedido.productoId}. Disponible: ${disponible}, Requerido: ${pedido.cantidad}` 
+      });
     }
   }
 
   // Si todos tienen stock disponible, proceder con la entrega
   for (const pedido of pedidos) {
-    const sid = `s${Date.now()}${Math.floor(Math.random()*1000)}`;
     const marca = pedido.marca || null;
+    
+    // Descontar de ingresos usando FEFO
+    let cantidadRestante = pedido.cantidad;
+    const ingresosDisponibles = db.prepare(`
+      SELECT id, cantidad_disponible, fechaVencimiento
+      FROM ingresos 
+      WHERE productoId = ? 
+      AND (marca IS ? OR marca = ?)
+      AND cantidad_disponible > 0
+      ORDER BY 
+        CASE WHEN fechaVencimiento IS NULL THEN 1 ELSE 0 END,
+        fechaVencimiento ASC
+    `).all(pedido.productoId, marca, marca);
+    
+    for (const ingreso of ingresosDisponibles) {
+      if (cantidadRestante <= 0) break;
+      
+      const aDescontar = Math.min(cantidadRestante, ingreso.cantidad_disponible);
+      
+      db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?')
+        .run(aDescontar, ingreso.id);
+      
+      cantidadRestante -= aDescontar;
+    }
+    
+    // Agregar a user_stock
+    const sid = `s${Date.now()}${Math.floor(Math.random()*1000)}`;
     db.prepare('INSERT INTO user_stock (id, usuarioId, productoId, cantidad, unidad, areaId, ubicacionId, marca) VALUES (?,?,?,?,?,?,?,?)')
       .run(sid, pedido.usuarioId, pedido.productoId, pedido.cantidad, pedido.unidad, 'a1', 'u1', marca);
     
@@ -1244,7 +1335,6 @@ app.get('/api/stock/proximos-vencer', authMiddleware, (req, res) => {
     const productos = getProductosProximosVencer(dias);
     res.json({ success: true, data: productos });
   } catch (error) {
-    console.error('❌ Error al obtener productos próximos a vencer:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1255,6 +1345,1360 @@ app.get('/api/stock/detallado', authMiddleware, (req, res) => {
     const reporte = getStockGeneralDetallado();
     res.json({ success: true, data: reporte });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE PRODUCTOS VENCIDOS ======
+
+// Obtener productos YA vencidos
+app.get('/api/stock/vencidos', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const productos = getProductosVencidos();
+    res.json({ success: true, data: productos });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Dar de baja un producto vencido
+app.post('/api/stock/dar-de-baja', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { ingreso_id, cantidad, motivo, observacion } = req.body;
+    
+    if (!ingreso_id || !cantidad || !motivo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Datos incompletos: ingreso_id, cantidad y motivo son requeridos' 
+      });
+    }
+    
+    // Obtener el ingreso
+    const ingreso = db.prepare('SELECT * FROM ingresos WHERE id = ?').get(ingreso_id);
+    if (!ingreso) {
+      return res.status(404).json({ success: false, message: 'Ingreso no encontrado' });
+    }
+    
+    // Validar que haya suficiente stock disponible
+    if (cantidad > ingreso.cantidad_disponible) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Stock insuficiente. Disponible: ${ingreso.cantidad_disponible}` 
+      });
+    }
+    
+    // Calcular valor de pérdida proporcional: (cantidad_baja / cantidad_total) * precio_total
+    const precioUnitario = (ingreso.precio || 0) / (ingreso.cantidad || 1);
+    const valorPerdida = cantidad * precioUnitario;
+    
+    // Crear registro de baja
+    const bajaId = `b${Date.now()}`;
+    db.prepare(`
+      INSERT INTO bajas_inventario (
+        id, ingreso_id, producto_id, cantidad, unidad, 
+        motivo, observacion, fecha_baja, usuario_id, valor_perdida
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      bajaId, 
+      ingreso_id, 
+      ingreso.productoId, 
+      cantidad, 
+      ingreso.unidad,
+      motivo, 
+      observacion || null, 
+      new Date().toISOString(), 
+      req.user.id, 
+      valorPerdida
+    );
+    
+    // Descontar de cantidad_disponible
+    db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?')
+      .run(cantidad, ingreso_id);
+    
+    // Obtener producto para el log
+    const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(ingreso.productoId);
+    
+    // Registrar en auditoría
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'BAJA_INVENTARIO',
+      modulo: 'inventario',
+      entidadId: bajaId,
+      entidadDescripcion: `Baja de ${cantidad} ${ingreso.unidad} de ${producto?.nombre || ingreso.productoId} por ${motivo}`,
+      cambios: { ingreso_id, cantidad, motivo, valorPerdida },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    const cantidadRestante = ingreso.cantidad_disponible - cantidad;
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        baja_id: bajaId, 
+        ingreso_id, 
+        cantidad, 
+        cantidad_restante: cantidadRestante,
+        valor_perdida: valorPerdida
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Devolver producto al proveedor
+app.post('/api/stock/devolver-proveedor', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { ingreso_id, cantidad, motivo, observacion, estado = 'PENDIENTE' } = req.body;
+    
+    if (!ingreso_id || !cantidad || !motivo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Datos incompletos: ingreso_id, cantidad y motivo son requeridos' 
+      });
+    }
+    
+    // Obtener el ingreso
+    const ingreso = db.prepare('SELECT * FROM ingresos WHERE id = ?').get(ingreso_id);
+    if (!ingreso) {
+      return res.status(404).json({ success: false, message: 'Ingreso no encontrado' });
+    }
+    
+    // Validar que haya suficiente stock disponible
+    if (cantidad > ingreso.cantidad_disponible) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Stock insuficiente. Disponible: ${ingreso.cantidad_disponible}` 
+      });
+    }
+    
+    // Calcular valor de devolución (precio unitario = precio total / cantidad total)
+    const precioUnitario = (ingreso.precio || 0) / (ingreso.cantidad || 1);
+    const valorDevuelto = cantidad * precioUnitario;
+    
+    // Crear registro de devolución
+    const devolucionId = `d${Date.now()}`;
+    db.prepare(`
+      INSERT INTO devoluciones_proveedor (
+        id, ingreso_id, proveedor_id, producto_id, cantidad, unidad, 
+        motivo, observacion, fecha_devolucion, usuario_id, estado, valor_devuelto
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      devolucionId,
+      ingreso_id,
+      ingreso.proveedorId,
+      ingreso.productoId,
+      cantidad,
+      ingreso.unidad,
+      motivo,
+      observacion || null,
+      new Date().toISOString(),
+      req.user.id,
+      estado,
+      valorDevuelto
+    );
+    
+    // Descontar de cantidad_disponible
+    db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?')
+      .run(cantidad, ingreso_id);
+    
+    // Obtener producto y proveedor para el log
+    const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(ingreso.productoId);
+    const proveedor = db.prepare('SELECT nombre FROM proveedores WHERE id = ?').get(ingreso.proveedorId);
+    
+    // Registrar en auditoría
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'DEVOLUCION_PROVEEDOR',
+      modulo: 'inventario',
+      entidadId: devolucionId,
+      entidadDescripcion: `Devolución de ${cantidad} ${ingreso.unidad} de ${producto?.nombre || ingreso.productoId} a ${proveedor?.nombre || 'proveedor'}`,
+      cambios: { ingreso_id, cantidad, motivo, estado, valorDevuelto },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        devolucion_id: devolucionId,
+        ingreso_id,
+        cantidad,
+        proveedor: proveedor?.nombre,
+        estado,
+        valor_devuelto: valorDevuelto
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener historial de bajas
+app.get('/api/reportes/bajas', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { fechaDesde, fechaHasta } = req.query;
+    
+    let query = `
+      SELECT 
+        b.id,
+        b.fecha_baja,
+        p.nombre as producto_nombre,
+        pr.nombre as proveedor_nombre,
+        b.cantidad,
+        b.unidad,
+        b.motivo,
+        b.observacion,
+        b.valor_perdida,
+        u.nombres as usuario_nombre
+      FROM bajas_inventario b
+      INNER JOIN productos p ON b.producto_id = p.id
+      INNER JOIN ingresos i ON b.ingreso_id = i.id
+      INNER JOIN proveedores pr ON i.proveedorId = pr.id
+      INNER JOIN users u ON b.usuario_id = u.id
+    `;
+    
+    const params = [];
+    
+    if (fechaDesde && fechaHasta) {
+      query += ' WHERE DATE(b.fecha_baja) BETWEEN DATE(?) AND DATE(?)';
+      params.push(fechaDesde, fechaHasta);
+    } else if (fechaDesde) {
+      query += ' WHERE DATE(b.fecha_baja) >= DATE(?)';
+      params.push(fechaDesde);
+    } else if (fechaHasta) {
+      query += ' WHERE DATE(b.fecha_baja) <= DATE(?)';
+      params.push(fechaHasta);
+    }
+    
+    query += ' ORDER BY b.fecha_baja DESC';
+    
+    const bajas = db.prepare(query).all(...params);
+    
+    // Calcular resumen
+    const resumen = {
+      total_bajas: bajas.length,
+      total_perdida: bajas.reduce((sum, b) => sum + (b.valor_perdida || 0), 0),
+      por_motivo: {
+        VENCIDO: bajas.filter(b => b.motivo === 'VENCIDO').length,
+        DAÑADO: bajas.filter(b => b.motivo === 'DAÑADO').length,
+        OBSOLETO: bajas.filter(b => b.motivo === 'OBSOLETO').length,
+        OTRO: bajas.filter(b => b.motivo === 'OTRO').length
+      }
+    };
+    
+    res.json({ success: true, data: { bajas, resumen } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener historial de devoluciones
+app.get('/api/reportes/devoluciones', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { fechaDesde, fechaHasta, estado } = req.query;
+    
+    let query = `
+      SELECT 
+        d.id,
+        d.fecha_devolucion,
+        p.nombre as producto_nombre,
+        pr.nombre as proveedor_nombre,
+        d.cantidad,
+        d.unidad,
+        d.motivo,
+        d.observacion,
+        d.estado,
+        d.valor_devuelto,
+        u.nombres as usuario_nombre
+      FROM devoluciones_proveedor d
+      INNER JOIN productos p ON d.producto_id = p.id
+      INNER JOIN proveedores pr ON d.proveedor_id = pr.id
+      INNER JOIN users u ON d.usuario_id = u.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (fechaDesde && fechaHasta) {
+      query += ' AND DATE(d.fecha_devolucion) BETWEEN DATE(?) AND DATE(?)';
+      params.push(fechaDesde, fechaHasta);
+    }
+    
+    if (estado) {
+      query += ' AND d.estado = ?';
+      params.push(estado);
+    }
+    
+    query += ' ORDER BY d.fecha_devolucion DESC';
+    
+    const devoluciones = db.prepare(query).all(...params);
+    
+    res.json({ success: true, data: devoluciones });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE CONFIGURACIÓN DE EMPRESA ======
+
+// Obtener configuración de empresa
+app.get('/api/empresa/config', authMiddleware, (req, res) => {
+  try {
+    const config = db.prepare('SELECT * FROM configuracion_empresa WHERE id = 1').get();
+    res.json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Actualizar configuración de empresa
+app.post('/api/empresa/config', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { nombre_empresa, ruc, direccion, telefono, email } = req.body;
+    
+    db.prepare(`
+      UPDATE configuracion_empresa 
+      SET nombre_empresa = ?, ruc = ?, direccion = ?, telefono = ?, email = ?, updated_at = ?
+      WHERE id = 1
+    `).run(nombre_empresa, ruc, direccion || null, telefono || null, email || null, new Date().toISOString());
+    
+    const config = db.prepare('SELECT * FROM configuracion_empresa WHERE id = 1').get();
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'UPDATE',
+      modulo: 'configuracion',
+      entidadDescripcion: `Actualización de configuración de empresa: ${nombre_empresa}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Subir logo de empresa
+app.post('/api/empresa/logo', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { logoBase64 } = req.body;
+    
+    if (!logoBase64) {
+      return res.status(400).json({ success: false, message: 'No se proporcionó imagen' });
+    }
+    
+    // Guardar logo como base64 en la BD
+    db.prepare('UPDATE configuracion_empresa SET logo_path = ?, updated_at = ? WHERE id = 1')
+      .run(logoBase64, new Date().toISOString());
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'UPDATE',
+      modulo: 'configuracion',
+      entidadDescripcion: 'Actualización de logo de empresa',
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: { logo_path: logoBase64 } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE COTIZACIONES ======
+
+// Obtener todas las cotizaciones
+app.get('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const cotizaciones = db.prepare(`
+      SELECT 
+        c.id,
+        c.numero,
+        c.fecha_cotizacion,
+        c.observaciones,
+        p.nombre as proveedor_nombre,
+        u.nombres as usuario_nombre,
+        COUNT(cd.id) as total_productos,
+        c.created_at
+      FROM cotizaciones c
+      LEFT JOIN proveedores p ON c.proveedor_id = p.id
+      LEFT JOIN users u ON c.usuario_id = u.id
+      LEFT JOIN cotizaciones_detalle cd ON c.id = cd.cotizacion_id
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+    `).all();
+    
+    res.json({ success: true, data: cotizaciones });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener detalle de una cotización
+app.get('/api/cotizaciones/:id', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const cotizacion = db.prepare(`
+      SELECT 
+        c.*,
+        p.nombre as proveedor_nombre,
+        p.contacto as proveedor_contacto,
+        p.telefono as proveedor_telefono,
+        u.nombres as usuario_nombre
+      FROM cotizaciones c
+      LEFT JOIN proveedores p ON c.proveedor_id = p.id
+      LEFT JOIN users u ON c.usuario_id = u.id
+      WHERE c.id = ?
+    `).get(id);
+    
+    if (!cotizacion) {
+      return res.status(404).json({ success: false, message: 'Cotización no encontrada' });
+    }
+    
+    const detalles = db.prepare(`
+      SELECT * FROM cotizaciones_detalle WHERE cotizacion_id = ?
+    `).all(id);
+    
+    res.json({ success: true, data: { ...cotizacion, detalles } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Crear nueva cotización
+app.post('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { proveedor_id, productos, observaciones } = req.body;
+    
+    if (!proveedor_id || !productos || productos.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Proveedor y productos son requeridos' 
+      });
+    }
+    
+    // Obtener el último número de cotización
+    const ultimaCot = db.prepare(`
+      SELECT numero FROM cotizaciones ORDER BY created_at DESC LIMIT 1
+    `).get();
+    
+    let nuevoNumero = 'COT-0000001';
+    if (ultimaCot) {
+      const numActual = parseInt(ultimaCot.numero.split('-')[1]);
+      nuevoNumero = `COT-${String(numActual + 1).padStart(7, '0')}`;
+    }
+    
+    const cotizacionId = `cot${Date.now()}`;
+    const fechaCotizacion = new Date().toISOString();
+    
+    // Insertar cotización
+    db.prepare(`
+      INSERT INTO cotizaciones (id, numero, proveedor_id, fecha_cotizacion, observaciones, usuario_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      cotizacionId,
+      nuevoNumero,
+      proveedor_id,
+      fechaCotizacion,
+      observaciones || null,
+      req.user.id
+    );
+    
+    // Insertar detalles
+    const insertDetalle = db.prepare(`
+      INSERT INTO cotizaciones_detalle (id, cotizacion_id, producto_id, producto_nombre, cantidad, unidad)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    productos.forEach((prod, index) => {
+      insertDetalle.run(
+        `${cotizacionId}-${index}`,
+        cotizacionId,
+        prod.producto_id,
+        prod.producto_nombre,
+        prod.cantidad,
+        prod.unidad
+      );
+    });
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'CREATE',
+      modulo: 'cotizaciones',
+      entidadId: cotizacionId,
+      entidadDescripcion: `Cotización ${nuevoNumero} creada`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ 
+      success: true, 
+      data: { id: cotizacionId, numero: nuevoNumero } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Generar PDF de cotización
+app.get('/api/cotizaciones/:id/pdf', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Obtener cotización con detalles
+    const cotizacion = db.prepare(`
+      SELECT 
+        c.*,
+        p.nombre as proveedor_nombre,
+        p.contacto as proveedor_contacto,
+        p.telefono as proveedor_telefono,
+        p.ruc as proveedor_ruc,
+        u.nombres as usuario_nombre
+      FROM cotizaciones c
+      LEFT JOIN proveedores p ON c.proveedor_id = p.id
+      LEFT JOIN users u ON c.usuario_id = u.id
+      WHERE c.id = ?
+    `).get(id);
+    
+    if (!cotizacion) {
+      return res.status(404).json({ success: false, message: 'Cotización no encontrada' });
+    }
+    
+    const detalles = db.prepare(`
+      SELECT * FROM cotizaciones_detalle WHERE cotizacion_id = ?
+    `).all(id);
+    
+    // Obtener configuración de empresa
+    const empresa = db.prepare('SELECT * FROM configuracion_empresa WHERE id = 1').get();
+    
+    // Crear PDF
+    const doc = new jsPDF();
+    let yPos = 20;
+    
+    // Agregar logo si existe (esquina superior derecha)
+    if (empresa?.logo_path) {
+      try {
+        // Posición: x=165 (esquina derecha), y=15, ancho=30, alto=30 (reducido para evitar distorsión)
+        doc.addImage(empresa.logo_path, 'PNG', 165, 15, 30, 30);
+      } catch (error) {
+        console.warn('⚠️ Error al agregar logo al PDF:', error.message);
+      }
+    }
+    
+    // Encabezado de empresa (lado izquierdo)
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text(empresa?.nombre_empresa || 'SIN CONFIGURAR', 15, yPos);
+    yPos += 7;
+    
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    if (empresa?.ruc) {
+      doc.text(`RUC: ${empresa.ruc}`, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.direccion) {
+      doc.text(empresa.direccion, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.telefono) {
+      doc.text(`Tel: ${empresa.telefono}`, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.email) {
+      doc.text(`Email: ${empresa.email}`, 15, yPos);
+      yPos += 5;
+    }
+    
+    yPos += 10;
+    
+    // Título del documento
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('COTIZACIÓN', 105, yPos, { align: 'center' });
+    yPos += 10;
+    
+    // Número de cotización
+    doc.setFontSize(12);
+    doc.text(cotizacion.numero, 105, yPos, { align: 'center' });
+    yPos += 15;
+    
+    // Información del proveedor
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text('Proveedor:', 15, yPos);
+    yPos += 7;
+    
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(10);
+    doc.text(cotizacion.proveedor_nombre || 'N/A', 15, yPos);
+    yPos += 5;
+    if (cotizacion.proveedor_ruc) {
+      doc.text(`RUC: ${cotizacion.proveedor_ruc}`, 15, yPos);
+      yPos += 5;
+    }
+    if (cotizacion.proveedor_contacto) {
+      doc.text(`Contacto: ${cotizacion.proveedor_contacto}`, 15, yPos);
+      yPos += 5;
+    }
+    if (cotizacion.proveedor_telefono) {
+      doc.text(`Tel: ${cotizacion.proveedor_telefono}`, 15, yPos);
+      yPos += 5;
+    }
+    
+    yPos += 5;
+    
+    // Fecha
+    doc.setFont(undefined, 'bold');
+    doc.text('Fecha:', 15, yPos);
+    doc.setFont(undefined, 'normal');
+    doc.text(new Date(cotizacion.fecha_cotizacion).toLocaleDateString('es-PE'), 35, yPos);
+    yPos += 10;
+    
+    // Tabla de productos
+    const tableData = detalles.map(det => [
+      det.producto_nombre,
+      det.cantidad.toString(),
+      det.unidad
+    ]);
+    
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Producto', 'Cantidad', 'Unidad']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold' },
+      styles: { fontSize: 10 },
+      columnStyles: {
+        0: { cellWidth: 100 },
+        1: { cellWidth: 40, halign: 'center' },
+        2: { cellWidth: 40, halign: 'center' }
+      }
+    });
+    
+    yPos = doc.lastAutoTable.finalY + 10;
+    
+    // Observaciones
+    if (cotizacion.observaciones) {
+      doc.setFont(undefined, 'bold');
+      doc.text('Observaciones:', 15, yPos);
+      yPos += 7;
+      
+      doc.setFont(undefined, 'normal');
+      const splitObs = doc.splitTextToSize(cotizacion.observaciones, 180);
+      doc.text(splitObs, 15, yPos);
+      yPos += splitObs.length * 5;
+    }
+    
+    yPos += 10;
+    
+    // Generado por
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'italic');
+    doc.text(`Generado por: ${cotizacion.usuario_nombre}`, 15, yPos);
+    doc.text(`Fecha de generación: ${new Date().toLocaleString('es-PE')}`, 15, yPos + 4);
+    
+    // Generar buffer del PDF
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    
+    // Enviar PDF
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=cotizacion-${cotizacion.numero}.pdf`);
+    res.send(pdfBuffer);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'EXPORT',
+      modulo: 'cotizaciones',
+      entidadId: id,
+      entidadDescripcion: `PDF generado para cotización ${cotizacion.numero}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE ÓRDENES DE COMPRA ======
+
+// Listar órdenes de compra con filtros
+app.get('/api/ordenes-compra', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { estado, proveedor_id, fecha_desde, fecha_hasta } = req.query;
+    
+    let query = `
+      SELECT 
+        o.*,
+        p.nombre as proveedor_nombre,
+        p.ruc as proveedor_ruc,
+        u.nombres as usuario_nombre,
+        (SELECT COUNT(*) FROM ordenes_compra_detalle WHERE orden_id = o.id) as total_productos
+      FROM ordenes_compra o
+      LEFT JOIN proveedores p ON o.proveedor_id = p.id
+      LEFT JOIN users u ON o.usuario_id = u.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (estado) {
+      query += ` AND o.estado = ?`;
+      params.push(estado);
+    }
+    
+    if (proveedor_id) {
+      query += ` AND o.proveedor_id = ?`;
+      params.push(proveedor_id);
+    }
+    
+    if (fecha_desde) {
+      query += ` AND o.fecha_orden >= ?`;
+      params.push(fecha_desde);
+    }
+    
+    if (fecha_hasta) {
+      query += ` AND o.fecha_orden <= ?`;
+      params.push(fecha_hasta);
+    }
+    
+    query += ` ORDER BY o.created_at DESC`;
+    
+    const ordenes = db.prepare(query).all(...params);
+    
+    res.json({ success: true, data: ordenes });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Obtener detalle de una orden de compra
+app.get('/api/ordenes-compra/:id', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const orden = db.prepare(`
+      SELECT 
+        o.*,
+        p.nombre as proveedor_nombre,
+        p.ruc as proveedor_ruc,
+        p.direccion as proveedor_direccion,
+        p.contacto as proveedor_contacto,
+        p.telefono as proveedor_telefono,
+        u.nombres as usuario_nombre
+      FROM ordenes_compra o
+      LEFT JOIN proveedores p ON o.proveedor_id = p.id
+      LEFT JOIN users u ON o.usuario_id = u.id
+      WHERE o.id = ?
+    `).get(id);
+    
+    if (!orden) {
+      return res.status(404).json({ success: false, message: 'Orden no encontrada' });
+    }
+    
+    const detalles = db.prepare(`
+      SELECT * FROM ordenes_compra_detalle WHERE orden_id = ?
+    `).all(id);
+    
+    const seguimiento = db.prepare(`
+      SELECT 
+        s.*,
+        u.nombres as usuario_nombre
+      FROM seguimiento_entregas s
+      LEFT JOIN users u ON s.usuario_id = u.id
+      WHERE s.orden_id = ?
+      ORDER BY s.fecha DESC
+    `).all(id);
+    
+    orden.detalles = detalles;
+    orden.seguimiento = seguimiento;
+    
+    res.json({ success: true, data: orden });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Crear orden de compra
+app.post('/api/ordenes-compra', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { proveedor_id, fecha_entrega_estimada, productos, condiciones_pago, notas } = req.body;
+    
+    if (!proveedor_id || !productos || productos.length === 0) {
+      return res.status(400).json({ success: false, message: 'Datos incompletos' });
+    }
+    
+    // Generar número de orden secuencial
+    const lastOrden = db.prepare('SELECT numero FROM ordenes_compra ORDER BY created_at DESC LIMIT 1').get();
+    let nextNumber = 1;
+    if (lastOrden) {
+      const match = lastOrden.numero.match(/ORD-(\d+)/);
+      if (match) {
+        nextNumber = parseInt(match[1]) + 1;
+      }
+    }
+    const numero = `ORD-${String(nextNumber).padStart(7, '0')}`;
+    
+    // Calcular totales
+    let subtotal = 0;
+    productos.forEach(p => {
+      subtotal += (p.cantidad * p.precio_unitario);
+    });
+    
+    const impuestos = subtotal * 0.18; // IGV 18%
+    const total = subtotal - impuestos;
+    
+    const ordenId = `ord${Date.now()}`;
+    const fechaOrden = new Date().toISOString().split('T')[0];
+    
+    // Insertar orden
+    db.prepare(`
+      INSERT INTO ordenes_compra (
+        id, numero, proveedor_id, fecha_orden, fecha_entrega_estimada,
+        estado, subtotal, impuestos, total, condiciones_pago, notas, usuario_id
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      ordenId, numero, proveedor_id, fechaOrden, fecha_entrega_estimada || null,
+      'PENDIENTE', subtotal, impuestos, total,
+      condiciones_pago || null, notas || null, req.user.id
+    );
+    
+    // Insertar detalles
+    const insertDetalle = db.prepare(`
+      INSERT INTO ordenes_compra_detalle (
+        id, orden_id, producto_id, producto_nombre, cantidad, unidad, precio_unitario, subtotal
+      ) VALUES (?,?,?,?,?,?,?,?)
+    `);
+    
+    productos.forEach(p => {
+      const detalleId = `ord_det${Date.now()}${Math.random()}`;
+      const subtotalProducto = p.cantidad * p.precio_unitario;
+      insertDetalle.run(
+        detalleId, ordenId, p.producto_id, p.producto_nombre,
+        p.cantidad, p.unidad, p.precio_unitario, subtotalProducto
+      );
+    });
+    
+    // Registrar seguimiento inicial
+    const segId = `seg${Date.now()}`;
+    db.prepare(`
+      INSERT INTO seguimiento_entregas (id, orden_id, estado, observaciones, usuario_id)
+      VALUES (?,?,?,?,?)
+    `).run(segId, ordenId, 'PENDIENTE', 'Orden de compra creada', req.user.id);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'CREATE',
+      modulo: 'ordenes_compra',
+      entidadId: ordenId,
+      entidadDescripcion: `Orden de compra ${numero} creada`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: { id: ordenId, numero } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Actualizar orden de compra
+app.put('/api/ordenes-compra/:id', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fecha_entrega_estimada, condiciones_pago, notas } = req.body;
+    
+    db.prepare(`
+      UPDATE ordenes_compra 
+      SET fecha_entrega_estimada = ?, condiciones_pago = ?, notas = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(fecha_entrega_estimada || null, condiciones_pago || null, notas || null, id);
+    
+    const orden = db.prepare('SELECT * FROM ordenes_compra WHERE id = ?').get(id);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'UPDATE',
+      modulo: 'ordenes_compra',
+      entidadId: id,
+      entidadDescripcion: `Orden ${orden.numero} actualizada`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: orden });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Cancelar orden de compra
+app.delete('/api/ordenes-compra/:id', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const orden = db.prepare('SELECT * FROM ordenes_compra WHERE id = ?').get(id);
+    if (!orden) {
+      return res.status(404).json({ success: false, message: 'Orden no encontrada' });
+    }
+    
+    // Cambiar estado a CANCELADA en lugar de eliminar
+    db.prepare('UPDATE ordenes_compra SET estado = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run('CANCELADA', id);
+    
+    // Registrar seguimiento
+    const segId = `seg${Date.now()}`;
+    db.prepare(`
+      INSERT INTO seguimiento_entregas (id, orden_id, estado, observaciones, usuario_id)
+      VALUES (?,?,?,?,?)
+    `).run(segId, id, 'CANCELADA', 'Orden cancelada', req.user.id);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'DELETE',
+      modulo: 'ordenes_compra',
+      entidadId: id,
+      entidadDescripcion: `Orden ${orden.numero} cancelada`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Cambiar estado de orden
+app.put('/api/ordenes-compra/:id/estado', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado, observaciones } = req.body;
+    
+    const estadosValidos = ['PENDIENTE', 'CONFIRMADA', 'EN_TRANSITO', 'ENTREGADA', 'CANCELADA'];
+    if (!estadosValidos.includes(estado)) {
+      return res.status(400).json({ success: false, message: 'Estado inválido' });
+    }
+    
+    db.prepare('UPDATE ordenes_compra SET estado = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(estado, id);
+    
+    // Registrar seguimiento
+    const segId = `seg${Date.now()}`;
+    db.prepare(`
+      INSERT INTO seguimiento_entregas (id, orden_id, estado, observaciones, usuario_id)
+      VALUES (?,?,?,?,?)
+    `).run(segId, id, estado, observaciones || `Estado cambiado a ${estado}`, req.user.id);
+    
+    const orden = db.prepare('SELECT * FROM ordenes_compra WHERE id = ?').get(id);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'UPDATE',
+      modulo: 'ordenes_compra',
+      entidadId: id,
+      entidadDescripcion: `Estado de orden ${orden.numero} cambiado a ${estado}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: orden });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Agregar evento de seguimiento
+app.post('/api/ordenes-compra/:id/seguimiento', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { observaciones } = req.body;
+    
+    const orden = db.prepare('SELECT * FROM ordenes_compra WHERE id = ?').get(id);
+    if (!orden) {
+      return res.status(404).json({ success: false, message: 'Orden no encontrada' });
+    }
+    
+    const segId = `seg${Date.now()}`;
+    db.prepare(`
+      INSERT INTO seguimiento_entregas (id, orden_id, estado, observaciones, usuario_id)
+      VALUES (?,?,?,?,?)
+    `).run(segId, id, orden.estado, observaciones, req.user.id);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'CREATE',
+      modulo: 'seguimiento_entregas',
+      entidadId: segId,
+      entidadDescripcion: `Seguimiento agregado a orden ${orden.numero}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, data: { id: segId } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Generar PDF de orden de compra
+app.get('/api/ordenes-compra/:id/pdf', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const orden = db.prepare(`
+      SELECT 
+        o.*,
+        p.nombre as proveedor_nombre,
+        p.ruc as proveedor_ruc,
+        p.direccion as proveedor_direccion,
+        p.contacto as proveedor_contacto,
+        p.telefono as proveedor_telefono,
+        u.nombres as usuario_nombre
+      FROM ordenes_compra o
+      LEFT JOIN proveedores p ON o.proveedor_id = p.id
+      LEFT JOIN users u ON o.usuario_id = u.id
+      WHERE o.id = ?
+    `).get(id);
+    
+    if (!orden) {
+      return res.status(404).json({ success: false, message: 'Orden no encontrada' });
+    }
+    
+    const detalles = db.prepare(`
+      SELECT * FROM ordenes_compra_detalle WHERE orden_id = ?
+    `).all(id);
+    
+    const empresa = db.prepare('SELECT * FROM configuracion_empresa WHERE id = 1').get();
+    
+    // Crear PDF
+    const doc = new jsPDF();
+    let yPos = 20;
+    
+    // Logo (esquina superior derecha)
+    if (empresa?.logo_path) {
+      try {
+        doc.addImage(empresa.logo_path, 'PNG', 165, 15, 30, 30);
+      } catch (error) {
+        console.warn('⚠️ Error al agregar logo:', error.message);
+      }
+    }
+    
+    // Encabezado de empresa
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text(empresa?.nombre_empresa || 'SIN CONFIGURAR', 15, yPos);
+    yPos += 7;
+    
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    if (empresa?.ruc) {
+      doc.text(`RUC: ${empresa.ruc}`, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.direccion) {
+      doc.text(empresa.direccion, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.telefono) {
+      doc.text(`Tel: ${empresa.telefono}`, 15, yPos);
+      yPos += 5;
+    }
+    if (empresa?.email) {
+      doc.text(`Email: ${empresa.email}`, 15, yPos);
+      yPos += 5;
+    }
+    
+    yPos += 10;
+    
+    // Título
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('ORDEN DE COMPRA', 105, yPos, { align: 'center' });
+    yPos += 10;
+    
+    doc.setFontSize(12);
+    doc.text(orden.numero, 105, yPos, { align: 'center' });
+    yPos += 15;
+    
+    // Información del proveedor
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text('Proveedor:', 15, yPos);
+    yPos += 7;
+    
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(10);
+    doc.text(orden.proveedor_nombre || 'N/A', 15, yPos);
+    yPos += 5;
+    if (orden.proveedor_ruc) {
+      doc.text(`RUC: ${orden.proveedor_ruc}`, 15, yPos);
+      yPos += 5;
+    }
+    if (orden.proveedor_contacto) {
+      doc.text(`Contacto: ${orden.proveedor_contacto}`, 15, yPos);
+      yPos += 5;
+    }
+    if (orden.proveedor_telefono) {
+      doc.text(`Tel: ${orden.proveedor_telefono}`, 15, yPos);
+      yPos += 5;
+    }
+    
+    yPos += 5;
+    
+    // Fechas
+    doc.setFont(undefined, 'bold');
+    doc.text('Fecha Orden:', 15, yPos);
+    doc.setFont(undefined, 'normal');
+    doc.text(new Date(orden.fecha_orden).toLocaleDateString('es-PE'), 45, yPos);
+    
+    if (orden.fecha_entrega_estimada) {
+      doc.setFont(undefined, 'bold');
+      doc.text('Entrega Estimada:', 100, yPos);
+      doc.setFont(undefined, 'normal');
+      doc.text(new Date(orden.fecha_entrega_estimada).toLocaleDateString('es-PE'), 145, yPos);
+    }
+    
+    yPos += 10;
+    
+    // Tabla de productos
+    const tableData = detalles.map(det => [
+      det.producto_nombre,
+      det.cantidad.toString(),
+      det.unidad,
+      `S/ ${det.precio_unitario.toFixed(2)}`,
+      `S/ ${det.subtotal.toFixed(2)}`
+    ]);
+    
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Producto', 'Cantidad', 'Unidad', 'P. Unitario', 'Subtotal']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold' },
+      styles: { fontSize: 10 },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 30, halign: 'right' },
+        4: { cellWidth: 30, halign: 'right' }
+      }
+    });
+    
+    yPos = doc.lastAutoTable.finalY + 10;
+    
+    // Totales
+    const xTotales = 140;
+    doc.setFontSize(10);
+    
+    doc.setFont(undefined, 'bold');
+    doc.text('Subtotal:', xTotales, yPos);
+    doc.setFont(undefined, 'normal');
+    doc.text(`S/ ${orden.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' });
+    yPos += 6;
+    
+    doc.setFont(undefined, 'bold');
+    doc.text('IGV (18%):', xTotales, yPos);
+    doc.setFont(undefined, 'normal');
+    doc.text(`S/ ${orden.impuestos.toFixed(2)}`, 190, yPos, { align: 'right' });
+    yPos += 6;
+    
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(12);
+    doc.text('TOTAL:', xTotales, yPos);
+    doc.text(`S/ ${orden.total.toFixed(2)}`, 190, yPos, { align: 'right' });
+    yPos += 15;
+    
+    // Condiciones de pago
+    if (orden.condiciones_pago) {
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.text('Condiciones de Pago:', 15, yPos);
+      yPos += 5;
+      doc.setFont(undefined, 'normal');
+      const lines = doc.splitTextToSize(orden.condiciones_pago, 180);
+      doc.text(lines, 15, yPos);
+      yPos += (lines.length * 5) + 5;
+    }
+    
+    // Notas
+    if (orden.notas) {
+      doc.setFont(undefined, 'bold');
+      doc.text('Notas:', 15, yPos);
+      yPos += 5;
+      doc.setFont(undefined, 'normal');
+      const lines = doc.splitTextToSize(orden.notas, 180);
+      doc.text(lines, 15, yPos);
+      yPos += (lines.length * 5) + 5;
+    }
+    
+    // Footer
+    yPos = 270;
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'italic');
+    doc.text(`Generado por: ${orden.usuario_nombre}`, 15, yPos);
+    doc.text(`Fecha: ${new Date().toLocaleString('es-PE')}`, 15, yPos + 4);
+    
+    const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=orden-${orden.numero}.pdf`);
+    res.send(pdfBuffer);
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'EXPORT',
+      modulo: 'ordenes_compra',
+      entidadId: id,
+      entidadDescripcion: `PDF generado para orden ${orden.numero}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Crear ingreso desde orden de compra
+app.post('/api/ordenes-compra/:id/crear-ingreso', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { detalles } = req.body; // Array de { producto_id, cantidad, precio, fechaVencimiento, lote, ubicacion, observaciones }
+    
+    // Verificar que la orden existe y está ENTREGADA
+    const orden = db.prepare(`
+      SELECT oc.*, p.nombre as proveedor_nombre
+      FROM ordenes_compra oc
+      LEFT JOIN proveedores p ON oc.proveedor_id = p.id
+      WHERE oc.id = ?
+    `).get(id);
+    
+    if (!orden) {
+      return res.status(404).json({ success: false, message: 'Orden no encontrada' });
+    }
+    
+    if (orden.estado !== 'ENTREGADA') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Solo se pueden crear ingresos de órdenes en estado ENTREGADA' 
+      });
+    }
+    
+    if (!detalles || detalles.length === 0) {
+      return res.status(400).json({ success: false, message: 'Debe proporcionar al menos un producto' });
+    }
+    
+    const ingresosCreados = [];
+    
+    // Crear un ingreso por cada producto
+    for (const detalle of detalles) {
+      const {
+        producto_id,
+        cantidad,
+        precio, // Este es el subtotal (cantidad × precio_unitario de la orden)
+        fechaVencimiento,
+        fechaFactura,
+        serieFactura
+      } = detalle;
+      
+      // Obtener info del producto para validación
+      const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(producto_id);
+      if (!producto) {
+        continue; // Skip si el producto no existe
+      }
+      
+      const ingresoId = `ing${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Usar ubicación y área del producto (ya están definidas en productos)
+      let areaIdFinal = producto.areaId;
+      let ubicacionIdFinal = producto.ubicacionId;
+      
+      if (!areaIdFinal) {
+        const defaultArea = db.prepare('SELECT id FROM areas LIMIT 1').get();
+        areaIdFinal = defaultArea?.id || 'area1';
+      }
+      
+      if (!ubicacionIdFinal) {
+        const defaultUbicacion = db.prepare('SELECT id FROM ubicaciones LIMIT 1').get();
+        ubicacionIdFinal = defaultUbicacion?.id || 'ubi1';
+      }
+      
+      db.prepare(`
+        INSERT INTO ingresos (
+          id, productoId, proveedorId, nombre, fechaIngreso,
+          cantidad, unidad, precio, areaId, ubicacionId,
+          fechaVencimiento, fechaFactura, serieFactura, marca, cantidad_disponible
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        ingresoId,
+        producto_id,
+        orden.proveedor_id,
+        producto.nombre,
+        new Date().toISOString(),
+        cantidad,
+        producto.unidad || 'unidad',
+        precio, // Aquí va el subtotal
+        areaIdFinal,
+        ubicacionIdFinal,
+        fechaVencimiento || null,
+        fechaFactura || null,
+        serieFactura || null,
+        producto.marca || '',
+        cantidad // cantidad_disponible = cantidad inicialmente
+      );
+      
+      ingresosCreados.push({ id: ingresoId, producto: producto.nombre, cantidad });
+      
+      // Log de auditoría
+      logAudit({
+        usuarioId: req.user.id,
+        accion: 'INSERT',
+        modulo: 'ingresos',
+        entidadId: ingresoId,
+        entidadDescripcion: `Ingreso de ${cantidad} ${producto.nombre} desde orden ${orden.numero}`,
+        ip: req.auditInfo?.ip,
+        userAgent: req.auditInfo?.userAgent
+      });
+    }
+    
+    // Agregar seguimiento a la orden
+    const segId = `seg${Date.now()}`;
+    db.prepare(`
+      INSERT INTO seguimiento_entregas (id, orden_id, estado, observaciones, usuario_id)
+      VALUES (?,?,?,?,?)
+    `).run(
+      segId,
+      id,
+      'ENTREGADA',
+      `Ingreso al inventario realizado (${ingresosCreados.length} productos)`,
+      req.user.id
+    );
+    
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'INSERT',
+      modulo: 'ordenes_compra',
+      entidadId: id,
+      entidadDescripcion: `Ingreso creado desde orden ${orden.numero}`,
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        ingresosCreados,
+        mensaje: `Se crearon ${ingresosCreados.length} ingresos exitosamente`
+      } 
+    });
+  } catch (error) {
+    console.error('Error al crear ingreso desde orden:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1296,13 +2740,9 @@ app.get('/api/audit/stats', authMiddleware, requireAdmin, (req, res) => {
 // Obtener métricas generales del dashboard
 app.get('/api/dashboard/metrics', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Obteniendo métricas del dashboard...');
     const metrics = getDashboardMetrics();
-    console.log('✅ Métricas obtenidas exitosamente');
     res.json({ success: true, data: metrics });
   } catch (error) {
-    console.error('❌ ERROR en /api/dashboard/metrics:', error);
-    console.error('Stack trace:', error.stack);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1310,13 +2750,9 @@ app.get('/api/dashboard/metrics', authMiddleware, (req, res) => {
 // Obtener datos para gráficos del dashboard
 app.get('/api/dashboard/charts', authMiddleware, (req, res) => {
   try {
-    console.log('📈 Obteniendo datos de gráficos...');
     const charts = getDashboardCharts();
-    console.log('✅ Gráficos obtenidos exitosamente');
     res.json({ success: true, data: charts });
   } catch (error) {
-    console.error('❌ ERROR en /api/dashboard/charts:', error);
-    console.error('Stack trace:', error.stack);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1325,13 +2761,9 @@ app.get('/api/dashboard/charts', authMiddleware, (req, res) => {
 app.get('/api/dashboard/activity', authMiddleware, (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    console.log(`📋 Obteniendo actividad reciente (limit: ${limit})...`);
     const activity = getRecentActivity(limit);
-    console.log('✅ Actividad obtenida exitosamente');
     res.json({ success: true, data: activity });
   } catch (error) {
-    console.error('❌ ERROR en /api/dashboard/activity:', error);
-    console.error('Stack trace:', error.stack);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1341,7 +2773,6 @@ app.get('/api/dashboard/activity', authMiddleware, (req, res) => {
 // Reporte de Inventario General
 app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando reporte de inventario...');
     const { productoId, areaId } = req.query;
     const data = getInventarioGeneralReport({ productoId, areaId });
     
@@ -1356,7 +2787,6 @@ app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en reporte de inventario:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1364,7 +2794,6 @@ app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
 // Reporte de Ingresos
 app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando reporte de ingresos...');
     const { fechaInicio, fechaFin, productoId, proveedorId } = req.query;
     const data = getIngresosReport({ fechaInicio, fechaFin, productoId, proveedorId });
     
@@ -1379,7 +2808,6 @@ app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en reporte de ingresos:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1387,7 +2815,6 @@ app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
 // Reporte de Pedidos
 app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando reporte de pedidos...');
     const { fechaInicio, fechaFin, usuarioId, estado, productoId } = req.query;
     const data = getPedidosReport({ fechaInicio, fechaFin, usuarioId, estado, productoId });
     
@@ -1402,7 +2829,6 @@ app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en reporte de pedidos:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1410,7 +2836,6 @@ app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
 // Reporte de Stock por Usuario
 app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando reporte de stock por usuario...');
     const { usuarioId } = req.query;
     const data = getStockPorUsuarioReport({ usuarioId });
     
@@ -1425,7 +2850,6 @@ app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en reporte de stock usuarios:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1433,7 +2857,6 @@ app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
 // Reporte de Movimientos
 app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando reporte de movimientos...');
     const { fechaInicio, fechaFin, tipo } = req.query;
     const data = getMovimientosReport({ fechaInicio, fechaFin, tipo });
     
@@ -1448,7 +2871,6 @@ app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en reporte de movimientos:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1456,13 +2878,11 @@ app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
 // Resumen Ejecutivo para Reportes
 app.get('/api/reportes/resumen', authMiddleware, (req, res) => {
   try {
-    console.log('📊 Generando resumen ejecutivo...');
     const { fechaInicio, fechaFin } = req.query;
     const data = getResumenEjecutivo({ fechaInicio, fechaFin });
     
     res.json({ success: true, data });
   } catch (error) {
-    console.error('❌ ERROR en resumen ejecutivo:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1475,5 +2895,4 @@ app.get('*', (req, res) => {
 const port = process.env.PORT || 3001;
 app.listen(port, '0.0.0.0', () => {
   console.log(`API escuchando en http://localhost:${port}/api`);
-  console.log(`Acceso desde red local: http://192.168.25.20:${port}`);
 });

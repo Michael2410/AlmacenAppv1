@@ -1,5 +1,5 @@
 import { Menu } from 'antd';
-import { DashboardOutlined, FileAddOutlined, ProfileOutlined, AppstoreOutlined, TeamOutlined, UserOutlined, FileTextOutlined, StockOutlined, ShoppingCartOutlined, DatabaseOutlined, EnvironmentOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { DashboardOutlined, FileAddOutlined, ProfileOutlined, AppstoreOutlined, TeamOutlined, UserOutlined, FileTextOutlined, StockOutlined, ShoppingCartOutlined, DatabaseOutlined, EnvironmentOutlined, CalculatorOutlined, ExclamationCircleOutlined, FileDoneOutlined, SettingOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/auth.store';
 
@@ -17,7 +17,7 @@ export default function SidebarNav() {
   const adminItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
     // Grupo Inventario
-    ...(has(['ingresos.view']) || has(['ingresos.create']) || has(['inventory.viewAll']) ? [{
+    ...(has(['ingresos.view']) || has(['ingresos.create']) || has(['inventory.viewAll']) || has(['vencidos.view']) ? [{
       key: 'inventario-group',
       icon: <StockOutlined />,
       label: 'Inventario',
@@ -25,6 +25,7 @@ export default function SidebarNav() {
         has(['ingresos.view']) ? { key: '/ingresos', icon: <ProfileOutlined />, label: 'Ingresos' } : null,
         has(['ingresos.create']) ? { key: '/ingresos/nuevo', icon: <FileAddOutlined />, label: 'Nuevo Ingreso' } : null,
         has(['inventory.viewAll']) ? { key: '/inventario', icon: <DatabaseOutlined />, label: 'Almacén' } : null,
+        has(['vencidos.view']) ? { key: '/inventario/vencidos', icon: <ExclamationCircleOutlined />, label: 'Productos Vencidos' } : null,
       ].filter(Boolean)
     }] : []),
     // Grupo Pedidos
@@ -43,14 +44,25 @@ export default function SidebarNav() {
       ].filter(Boolean)
     }] : []),
     has(['reports.view']) ? { key: '/reportes', icon: <FileTextOutlined />, label: 'Reportes' } : null,
+    // Compras
+    ...(has(['cotizaciones.view']) || has(['ordenes.view']) ? [{
+      key: 'compras-group',
+      icon: <ShoppingCartOutlined />,
+      label: 'Compras',
+      children: [
+        has(['cotizaciones.view']) ? { key: '/cotizaciones', icon: <FileDoneOutlined />, label: 'Cotizaciones' } : null,
+        has(['ordenes.view']) ? { key: '/ordenes-compra', icon: <ShoppingCartOutlined />, label: 'Órdenes de Compra' } : null,
+      ].filter(Boolean)
+    }] : []),
     // Grupo Sistema (solo para administrador)
-    ...(has(['users.manage']) || has(['roles.manage']) ? [{
+    ...(has(['users.manage']) || has(['roles.manage']) || has(['empresa.config']) ? [{
       key: 'sistema-group',
       icon: <UserOutlined />,
       label: 'Sistema',
       children: [
         has(['users.manage']) ? { key: '/seguridad/usuarios', icon: <UserOutlined />, label: 'Usuarios' } : null,
         has(['roles.manage']) ? { key: '/seguridad/roles', icon: <UserOutlined />, label: 'Roles y Permisos' } : null,
+        has(['empresa.config']) ? { key: '/configuracion/empresa', icon: <SettingOutlined />, label: 'Configuración' } : null,
       ].filter(Boolean)
     }] : []),
   ].filter(Boolean) as any[];

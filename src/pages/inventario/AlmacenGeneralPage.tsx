@@ -28,7 +28,7 @@ export default function AlmacenGeneralPage() {
         rowKey={(r: any) => `${r.productoId ?? r.id}::${r.marca ?? ''}`}
         dataSource={rows as any}
         columns={[
-      { title: 'Producto', dataIndex: 'nombre' },
+          { title: 'Producto', dataIndex: 'nombre' },
           { title: 'Marca', dataIndex: 'marca', filters: Array.from(new Set((rows as any[]).map(r => r.marca).filter(Boolean))).map((m: any) => ({ text: m, value: m })), onFilter: (v: any, r: any) => r.marca === v },
           { title: 'Unidad', dataIndex: 'unidad' },
           { title: 'Área', dataIndex: 'areaId', render: (areaId: string) => getAreaName(areaId) },

@@ -6,12 +6,16 @@ Sistema integral de gestión de inventario desarrollado con React + TypeScript y
 
 - 🔐 **Autenticación y Autorización**: Login con JWT, roles y permisos granulares
 - 📦 **Gestión de Productos**: CRUD completo con marca, categorización y control de stock
-- � **Dashboard**: Métricas en tiempo real, gráficos y alertas inteligentes
+- 📊 **Dashboard**: Métricas en tiempo real, gráficos y alertas inteligentes
 - 🚚 **Ingresos**: Registro detallado con fechas de vencimiento, series y facturas
 - 📝 **Pedidos**: Sistema de solicitudes por lotes con estados y seguimiento
 - 👥 **Usuarios**: Administración de trabajadores con asignación de stock
-- � **Reportes**: Exportación a Excel, PDF y CSV con 5 tipos de reportes
-- ⚠️ **Alertas**: Stock crítico y productos próximos a vencer
+- 📄 **Reportes**: Exportación a Excel, PDF y CSV con 7 tipos de reportes
+- ⚠️ **Alertas**: Stock crítico, productos próximos a vencer y alertas personalizadas
+- ❌ **Productos Vencidos**: Gestión de bajas y devoluciones a proveedores
+- � **Cotizaciones**: Sistema de cotizaciones para proveedores con generación de PDF
+- 🏢 **Configuración de Empresa**: Datos corporativos y logo para documentos
+- �🔒 **Control de Vencimientos**: FEFO automático y bloqueo de productos vencidos
 - 📜 **Auditoría**: Registro completo de acciones del sistema
 - 🎯 **Timeline**: Actividad reciente con fechas y descripciones
 
@@ -43,7 +47,7 @@ Sistema integral de gestión de inventario desarrollado con React + TypeScript y
 
 ### 1. Clonar repositorio
 ```bash
-git clone https://github.com/Michael2410/AlmacenApp.git
+git clone https://github.com/Michael2410/AlmacenAppv1.git
 cd AlmacenApp
 ```
 
@@ -280,13 +284,50 @@ AlmacenApp/
 - **Alertas clickeables**: Modales con detalles de productos con stock bajo o próximos a vencer
 
 ### Sistema de Reportes
-5 tipos de reportes con exportación a Excel, PDF y CSV:
+7 tipos de reportes con exportación a Excel, PDF y CSV:
 
 1. **Inventario General**: Stock valorizado con filtros por producto y área
 2. **Ingresos**: Histórico con totales y fechas de vencimiento
 3. **Pedidos**: Por estado con estadísticas detalladas
 4. **Stock por Usuario**: Asignaciones individuales
 5. **Movimientos**: Consolidado de ingresos, salidas y entregas
+6. **Bajas de Inventario**: Productos dados de baja con valor de pérdida
+7. **Devoluciones**: Histórico de devoluciones a proveedores
+
+### Sistema de Cotizaciones
+- **Cotizaciones para proveedores**: Creación de solicitudes de cotización con productos y cantidades
+- **Numeración automática**: Sistema secuencial COT-0000001, COT-0000002, etc.
+- **Generación de PDF profesional**: Documentos con logo optimizado (30x30) y datos completos
+  - Logo de empresa en esquina superior derecha (sin distorsión)
+  - Información completa de la empresa (nombre, RUC, dirección, teléfono, email)
+  - Datos del proveedor incluyen RUC (11 dígitos validados)
+  - Tabla de productos con cantidades y unidades
+- **Historial completo**: Registro de todas las cotizaciones enviadas con descarga de PDF
+- **Configuración de empresa**: Logo, nombre, RUC y datos de contacto personalizables
+- **Gestión de proveedores**: Campo RUC obligatorio (11 dígitos) en formulario y tabla
+- **Personalización**: Observaciones y notas adicionales por cotización
+
+### Sistema de Órdenes de Compra
+- **Creación manual de órdenes**: Selección de proveedor y productos con precios
+- **Numeración automática**: Sistema secuencial ORD-0000001, ORD-0000002, etc.
+- **Gestión de estados**: PENDIENTE → CONFIRMADA → EN_TRÁNSITO → ENTREGADA (o CANCELADA)
+- **Generación de PDF profesional**: Documentos formales con todos los detalles
+  - Logo de empresa y datos completos
+  - Información del proveedor con RUC
+  - Tabla de productos con precios unitarios
+  - Cálculo automático: Subtotal + IGV (18%) = Total
+  - Condiciones de pago y notas adicionales
+- **Seguimiento en tiempo real**: Timeline visual de eventos y cambios de estado
+- **Control de entregas**: Fecha estimada y seguimiento de cumplimiento
+- **Historial completo**: Registro de todas las órdenes con filtros por estado/proveedor
+- **Descarga de PDFs**: Generación instantánea de documentos para imprimir/enviar
+- **Integración con Ingresos**: Botón "Ingresar" para órdenes ENTREGADAS
+  - Pre-carga automática de productos desde la orden
+  - Precio = subtotal (cantidad × precio_unitario de la orden)
+  - Ubicación y área tomadas del producto automáticamente
+  - Solo editar: fechas de vencimiento, factura y serie
+  - Creación instantánea de múltiples ingresos en un click
+  - Trazabilidad completa: orden → ingresos
 
 ### Gestión de Pedidos
 - **Pedidos por lotes**: Múltiples productos en una sola solicitud
@@ -301,11 +342,20 @@ AlmacenApp/
 - **Historial**: Movimientos de entrada y salida
 
 ### Sistema de Alertas
-- **Stock crítico**: Productos con menos de 10 unidades
-- **Próximos a vencer**: Ingresos que vencen en 30 días
-  - 🔴 Crítico: ≤7 días
-  - 🟠 Urgente: ≤15 días
-  - 🟡 Atención: ≤30 días
+- **Stock crítico**: Alertas personalizadas por producto (configurable)
+- **Próximos a vencer**: Umbrales personalizados por producto
+  - 🔴 Crítico: Días configurables (default 7)
+  - 🟠 Urgente: Días configurables (default 15)
+  - 🟡 Atención: Días configurables (default 30)
+- **FEFO Automático**: First Expired, First Out en asignaciones
+- **Bloqueo de vencidos**: No permite asignar productos vencidos
+
+### Gestión de Productos Vencidos
+- **Vista de vencidos**: Lista de productos con fecha de vencimiento pasada
+- **Dar de baja**: Registro de mermas con cálculo de valor perdido
+- **Devolver a proveedor**: Gestión de devoluciones con seguimiento de estado
+- **Bloqueo de ingresos**: Cuarentena de lotes con problemas
+- **Reportes de pérdidas**: Análisis de bajas por motivo y período
 
 ### Auditoría
 - Registro de todas las acciones críticas
@@ -320,24 +370,39 @@ AlmacenApp/
 - **Trabajador**: Permisos limitados (ver inventario, crear pedidos, salidas)
 
 ### Permisos Granulares
-- `products.view`, `products.create`, `products.edit`, `products.delete`
-- `inventory.viewAll`, `inventory.viewSelf`, `inventory.assign`
-- `requests.viewAll`, `requests.viewSelf`, `requests.approve`
-- `users.view`, `users.create`, `users.edit`, `users.delete`
-- `reports.view`, `reports.export`
-- `audit.view`
+- **Productos**: `products.view`, `products.create`, `products.update`, `products.delete`
+- **Inventario**: `inventory.viewAll`, `inventory.viewSelf`, `inventory.assign`
+- **Ingresos**: `ingresos.view`, `ingresos.create`, `ingresos.update`, `ingresos.delete`
+- **Pedidos**: `pedidos.view`, `pedidos.create`, `pedidos.approve`, `pedidos.reject`, `pedidos.deliver`
+- **Proveedores**: `providers.view`, `providers.create`, `providers.update`, `providers.delete`
+- **Productos Vencidos**: `vencidos.view`, `vencidos.baja`, `vencidos.devolucion`
+- **Cotizaciones**: `cotizaciones.view`, `cotizaciones.create`
+- **Órdenes de Compra**: `ordenes.view`, `ordenes.create`, `ordenes.update`, `ordenes.delete`, `ordenes.approve`, `ordenes.seguimiento`
+- **Configuración**: `empresa.config`
+- **Reportes**: `reports.view`, `reports.export`, `reports.advanced`
+- **Usuarios**: `users.manage`
+- **Roles**: `roles.manage`
+- **Catálogos**: `areas.manage`, `ubicaciones.manage`, `unidades.manage`
 
 ## 🗄️ Base de Datos
 
 ### Tablas principales
 - `users`: Usuarios del sistema
 - `roles`: Roles con permisos JSON
-- `productos`: Catálogo de productos
-- `proveedores`: Catálogo de proveedores
-- `ingresos`: Registro de entradas con fechas de vencimiento
+- `productos`: Catálogo de productos con alertas personalizadas
+- `proveedores`: Catálogo de proveedores (incluye RUC de 11 dígitos)
+- `ingresos`: Registro de entradas con fechas de vencimiento y control de disponibilidad
 - `pedidos`: Solicitudes de trabajadores
 - `user_stock`: Stock asignado por usuario
 - `user_salidas`: Registro de salidas
+- `bajas_inventario`: Registro de productos dados de baja
+- `devoluciones_proveedor`: Registro de devoluciones a proveedores
+- `cotizaciones`: Cotizaciones para proveedores
+- `cotizaciones_detalle`: Productos incluidos en cada cotización
+- `ordenes_compra`: Órdenes de compra formales con precios y estados
+- `ordenes_compra_detalle`: Productos con precios en cada orden
+- `seguimiento_entregas`: Timeline de eventos y cambios de estado de órdenes
+- `configuracion_empresa`: Configuración de datos corporativos
 - `auditoria`: Logs del sistema
 - `areas`, `ubicaciones`, `unidades_medida`: Catálogos
 
@@ -413,7 +478,180 @@ npm install
 
 ## 📝 Changelog
 
-### v2.0.0 (Actual)
+### v2.2.1 - Integración Órdenes → Ingresos ✅ (Actual - Oct 2025)
+**Integración completa: Órdenes de Compra → Ingresos de Inventario**
+
+#### Nuevas Funcionalidades
+- ✅ **Botón "Ingresar"** en órdenes con estado ENTREGADA
+- ✅ **Pre-carga automática** de productos desde la orden de compra
+- ✅ **Precio como subtotal**: Usa cantidad × precio_unitario (no precio unitario)
+- ✅ **Ubicación automática**: Se toma del producto (no editable por usuario)
+- ✅ **Área automática**: Se toma del producto (no editable por usuario)
+- ✅ **Cantidad disponible**: Se inicializa automáticamente con cantidad ingresada
+- ✅ **Campos editables**: Fecha vencimiento, fecha factura, serie factura
+- ✅ **Modal dedicado**: ModalIngresarOrden con formulario simplificado
+- ✅ **Auditoría completa**: Registra quién creó el ingreso desde qué orden
+
+#### Backend (1 endpoint nuevo)
+- ✅ POST `/api/ordenes-compra/:id/crear-ingreso` - Crear ingresos desde orden ENTREGADA
+  - Valida que la orden esté en estado ENTREGADA
+  - Crea un ingreso por cada producto en la orden
+  - Pre-carga: productoId, proveedorId, cantidad, precio (subtotal), fechas opcionales
+  - Usa ubicación y área del producto automáticamente
+  - Inicializa `cantidad_disponible` con el valor de `cantidad`
+  - Agrega seguimiento a la orden
+  - Registra auditoría completa
+
+#### Frontend (Hook + Modal)
+- ✅ Hook `useCrearIngresoDesdeOrden()` en `useOrdenesCompra.ts`
+- ✅ Modal `ModalIngresarOrden` integrado en `OrdenesCompraPage`
+- ✅ Botón visible solo para órdenes ENTREGADAS
+- ✅ Formulario con 3 campos por producto:
+  - Fecha Vencimiento (DatePicker)
+  - Fecha Factura (DatePicker)
+  - Serie Factura (Input)
+
+#### Flujo de Trabajo
+1. Usuario marca orden como ENTREGADA
+2. Aparece botón "Ingresar" en la fila
+3. Click en "Ingresar" abre modal con productos pre-cargados
+4. Usuario completa campos opcionales (fechas, serie factura)
+5. Sistema crea ingresos automáticamente:
+   - Toma precio como subtotal (cantidad × precio_unitario)
+   - Usa ubicación del producto
+   - Usa área del producto
+   - Inicializa cantidad_disponible = cantidad
+6. Actualiza seguimiento de la orden
+7. Invalida caché de ingresos y órdenes
+
+#### Mejoras de UX/UI
+- ✅ Pre-visualización de datos: Muestra proveedor, fecha orden, productos
+- ✅ Cálculo visible: Precio total = cantidad × precio unitario
+- ✅ Layout optimizado: 3 campos en una fila (compacto)
+- ✅ Validación automática: No permite ingresar si no está ENTREGADA
+- ✅ Mensajes de éxito con detalle de productos ingresados
+- ✅ Icono inbox en botón "Ingresar"
+
+#### Ventajas del Sistema
+- 🚀 **Automatización**: 90% de campos pre-llenados
+- 🎯 **Precisión**: Usa precios exactos de la orden de compra
+- ⚡ **Rapidez**: Ingreso de múltiples productos en un click
+- 🔒 **Trazabilidad**: Link directo orden → ingresos
+- 📊 **Consistencia**: Datos uniformes entre órdenes e ingresos
+
+### v2.2.0 - Sprint 2 Completado ✅ (Oct 2025)
+**Sistema de Órdenes de Compra - 100% Implementado**
+
+#### Backend (9 endpoints base)
+- ✅ GET `/api/ordenes-compra` - Listar órdenes con filtros (estado, proveedor, fechas)
+- ✅ POST `/api/ordenes-compra` - Crear orden de compra manual
+- ✅ GET `/api/ordenes-compra/:id` - Detalle completo con productos y seguimiento
+- ✅ PUT `/api/ordenes-compra/:id` - Actualizar orden
+- ✅ DELETE `/api/ordenes-compra/:id` - Cancelar orden (soft delete)
+- ✅ PUT `/api/ordenes-compra/:id/estado` - Cambiar estado de orden
+- ✅ POST `/api/ordenes-compra/:id/seguimiento` - Agregar evento de seguimiento
+- ✅ GET `/api/ordenes-compra/:id/pdf` - Generar y descargar PDF profesional
+
+#### Base de Datos
+- ✅ Tabla `ordenes_compra` con numeración secuencial (ORD-0000001)
+- ✅ Tabla `ordenes_compra_detalle` con productos y precios
+- ✅ Tabla `seguimiento_entregas` para timeline de eventos
+- ✅ Estados: PENDIENTE, CONFIRMADA, EN_TRANSITO, ENTREGADA, CANCELADA
+- ✅ Cálculo automático: subtotal, impuestos (IGV 18%), total
+- ✅ Permisos: `ordenes.*` (view, create, update, delete, approve, seguimiento)
+
+#### Frontend (1 página + componentes)
+- ✅ `/ordenes-compra` - Página principal con tabla de órdenes
+- ✅ Modal crear orden manual con productos dinámicos
+- ✅ Modal ver detalle con timeline visual de seguimiento
+- ✅ Modal cambiar estado de orden
+- ✅ Modal agregar evento de seguimiento
+- ✅ Hook `useOrdenesCompra()` - CRUD completo de órdenes
+- ✅ TypeScript: Interfaces `OrdenCompra`, `OrdenCompraDetalle`, `SeguimientoEntrega`
+
+#### Funcionalidades Implementadas
+- ✅ Creación manual de órdenes seleccionando proveedor y productos
+- ✅ Agregar productos dinámicamente con cantidad y precio unitario
+- ✅ Cálculo automático de subtotales, IGV (18%) y total
+- ✅ Numeración automática de órdenes (ORD-0000001, ORD-0000002...)
+- ✅ Gestión de estados con timeline visual
+- ✅ Generación de PDF con precios y totales
+- ✅ Seguimiento detallado de entregas
+- ✅ Filtros por estado, proveedor y fechas
+- ✅ Condiciones de pago y notas personalizables
+- ✅ Descarga directa de PDFs desde tabla
+
+#### Mejoras de UX/UI
+- ✅ Badges de colores según estado de orden
+- ✅ Timeline visual estilo línea de tiempo para seguimiento
+- ✅ Tabla de productos con precios en orden
+- ✅ Cálculo en tiempo real de totales al agregar productos
+- ✅ Validación de campos obligatorios
+- ✅ Modales responsivos y accesibles
+- ✅ Grupo "Compras" en sidebar (Cotizaciones + Órdenes)
+
+#### Documentación
+- ✅ README actualizado con sistema de órdenes
+- ✅ Changelog completo de Sprint 2
+- ✅ Permisos y tablas documentadas
+
+### v2.1.1 - Sprint 1 Completado ✅ (Oct 2025)
+**Sistema de Cotizaciones para Proveedores - 100% Implementado**
+
+#### Backend (7 endpoints)
+- ✅ POST `/api/empresa/config` - Configuración de empresa
+- ✅ POST `/api/empresa/logo` - Subida de logo (base64)
+- ✅ GET `/api/empresa/config` - Obtener configuración
+- ✅ GET `/api/cotizaciones` - Listar cotizaciones
+- ✅ POST `/api/cotizaciones` - Crear cotización
+- ✅ GET `/api/cotizaciones/:id` - Detalle de cotización
+- ✅ GET `/api/cotizaciones/:id/pdf` - Generar y descargar PDF
+
+#### Base de Datos
+- ✅ Tabla `configuracion_empresa` con logo y datos corporativos
+- ✅ Tabla `cotizaciones` con numeración secuencial automática
+- ✅ Tabla `cotizaciones_detalle` para productos
+- ✅ Campo `ruc` agregado a tabla `proveedores` (migración automática)
+- ✅ Permisos: `cotizaciones.view`, `cotizaciones.create`, `empresa.config`
+
+#### Frontend (2 páginas + hooks)
+- ✅ `/configuracion/empresa` - Página de configuración empresarial
+- ✅ `/cotizaciones` - Gestión completa de cotizaciones
+- ✅ Hook `useEmpresaConfig()` - Configuración de empresa
+- ✅ Hook `useCotizaciones()` - CRUD de cotizaciones
+- ✅ TypeScript: Interfaces `EmpresaConfig`, `Cotizacion`, `CotizacionDetalle`
+
+#### Funcionalidades Implementadas
+- ✅ Gestión de proveedores con campo RUC (11 dígitos, obligatorio)
+- ✅ RUC visible en tabla y formularios de proveedores
+- ✅ Numeración automática de cotizaciones (COT-0000001, COT-0000002...)
+- ✅ Generación de PDF profesional con jsPDF + jspdf-autotable
+- ✅ Logo de empresa optimizado (30x30) en esquina superior derecha
+- ✅ PDFs incluyen: logo, datos empresa, RUC proveedor, tabla de productos
+- ✅ Sistema de permisos granulares para cotizaciones
+- ✅ Navegación integrada desde modal de stock bajo
+- ✅ Validación de formularios con Ant Design
+
+#### Mejoras de UX/UI
+- ✅ Logo sin distorsión en PDFs (redimensionado a 30x30)
+- ✅ RUC del proveedor incluido en todos los PDFs
+- ✅ Botón "Crear Cotización" en lugar de "Crear Pedido" (stock bajo)
+- ✅ Modal de productos con búsqueda dinámica
+- ✅ Descarga directa de PDFs desde tabla de historial
+
+#### Documentación
+- ✅ README actualizado con todas las funcionalidades
+- ✅ Changelog completo de Sprint 1
+- ✅ Guía de permisos actualizada
+
+### v2.1.0
+- ✅ Sistema de cotizaciones para proveedores
+- ✅ Generación de PDF con logo de empresa
+- ✅ Configuración de datos corporativos
+- ✅ Numeración automática de cotizaciones (COT-0000001)
+- ✅ Reportes de bajas de inventario y devoluciones
+
+### v2.0.0
 - ✅ Sistema completo de reportes con exportación
 - ✅ Dashboard con gráficos en tiempo real
 - ✅ Alertas de stock bajo y productos próximos a vencer

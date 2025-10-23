@@ -14,6 +14,7 @@ export type UnidadMedida =
 export interface Proveedor {
   id: ID;
   nombre: string;
+  ruc?: string;
   direccion: string;
   contacto: string;
   telefono?: string;

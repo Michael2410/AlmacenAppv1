@@ -6,6 +6,10 @@ import IngresosListPage from '../pages/ingresos/IngresosListPage';
 import NuevoIngresoPage from '../pages/ingresos/NuevoIngresoPage';
 // import MiInventarioPage from '../pages/inventario/MiInventarioPage';
 import InventarioPage from '../pages/inventario/InventarioPage';
+import ProductosVencidosPage from '../pages/inventario/ProductosVencidosPage';
+import CotizacionesPage from '../pages/cotizaciones/CotizacionesPage';
+import OrdenesCompraPage from '../pages/ordenes-compra/OrdenesCompraPage';
+import EmpresaPage from '../pages/configuracion/EmpresaPage';
 // AsignacionesPage eliminado
 import ProveedoresListPage from '../pages/proveedores/ProveedoresListPage';
 import ProductosListPage from '../pages/productos/ProductosListPage';
@@ -43,6 +47,10 @@ export const router = createBrowserRouter([
   { path: '/ingresos/nuevo', element: (<PermissionGuard require={['ingresos.create']}><NuevoIngresoPage /></PermissionGuard>) },
     { path: '/inventario', element: (<PermissionGuard require={['inventory.viewSelf']}><InventarioPage /></PermissionGuard>) },
     { path: '/inventario/salidas', element: (<PermissionGuard require={['inventory.viewSelf']}><SalidasPage /></PermissionGuard>) },
+    { path: '/inventario/vencidos', element: (<PermissionGuard require={['vencidos.view']}><ProductosVencidosPage /></PermissionGuard>) },
+    { path: '/cotizaciones', element: (<PermissionGuard require={['cotizaciones.view']}><CotizacionesPage /></PermissionGuard>) },
+    { path: '/ordenes-compra', element: (<PermissionGuard require={['ordenes.view']}><OrdenesCompraPage /></PermissionGuard>) },
+    { path: '/configuracion/empresa', element: (<PermissionGuard require={['empresa.config']}><EmpresaPage /></PermissionGuard>) },
     { path: '/test', element: <TestPage /> },
     { path: '/debug', element: <DebugLoginPage /> },
     { path: '/pedidos/mios', element: (<PermissionGuard require={['pedidos.create']}><MisPedidosPage /></PermissionGuard>) },

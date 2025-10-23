@@ -88,7 +88,7 @@ export default function AreasPage() {
   return (
     <div className="space-y-4">
       <Card
-        title="Gestión de Áreas"
+        title="Gestión de Áreas" 
         extra={
           <Button
             type="primary"

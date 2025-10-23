@@ -5,31 +5,22 @@ import db from '../db.js';
 
 /**
  * Calcula el stock disponible de un producto específico (con marca opcional)
+ * Ahora usa la columna cantidad_disponible directamente
  * @param {string} productoId - ID del producto
  * @param {string} [marca] - Marca del producto (opcional)
  * @returns {number} Cantidad disponible
  */
 export function getStockDisponible(productoId, marca = null) {
-  // Stock total ingresado
-  const ingresosQuery = marca 
-    ? db.prepare('SELECT COALESCE(SUM(cantidad), 0) as total FROM ingresos WHERE productoId = ? AND marca = ?')
-    : db.prepare('SELECT COALESCE(SUM(cantidad), 0) as total FROM ingresos WHERE productoId = ? AND (marca IS NULL OR marca = "")');
+  // Suma de cantidad_disponible de todos los ingresos del producto
+  const query = marca 
+    ? db.prepare('SELECT COALESCE(SUM(cantidad_disponible), 0) as total FROM ingresos WHERE productoId = ? AND marca = ?')
+    : db.prepare('SELECT COALESCE(SUM(cantidad_disponible), 0) as total FROM ingresos WHERE productoId = ? AND (marca IS NULL OR marca = "")');
   
-  const ingresos = marca 
-    ? ingresosQuery.get(productoId, marca)
-    : ingresosQuery.get(productoId);
+  const result = marca 
+    ? query.get(productoId, marca)
+    : query.get(productoId);
 
-  // Stock asignado a usuarios
-  const asignadosQuery = marca
-    ? db.prepare('SELECT COALESCE(SUM(cantidad), 0) as total FROM user_stock WHERE productoId = ? AND marca = ?')
-    : db.prepare('SELECT COALESCE(SUM(cantidad), 0) as total FROM user_stock WHERE productoId = ? AND (marca IS NULL OR marca = "")');
-  
-  const asignados = marca
-    ? asignadosQuery.get(productoId, marca)
-    : asignadosQuery.get(productoId);
-
-  const disponible = (ingresos?.total || 0) - (asignados?.total || 0);
-  return disponible;
+  return result?.total || 0;
 }
 
 /**
@@ -102,6 +93,7 @@ export function getProductosProximosVencer(diasUmbral = 30) {
       p.dias_vencimiento_atencion,
       i.marca,
       i.cantidad,
+      i.cantidad_disponible,
       i.unidad,
       i.fechaVencimiento,
       i.fechaIngreso,
@@ -110,7 +102,7 @@ export function getProductosProximosVencer(diasUmbral = 30) {
     INNER JOIN productos p ON i.productoId = p.id
     WHERE i.fechaVencimiento IS NOT NULL
       AND i.fechaVencimiento != ''
-      AND i.cantidad > 0
+      AND i.cantidad_disponible > 0
       AND p.activo = 1
     ORDER BY i.fechaVencimiento ASC
   `;
@@ -144,7 +136,8 @@ export function getProductosProximosVencer(diasUmbral = 30) {
         producto_id: ingreso.productoId,
         producto_nombre: ingreso.productoNombre,
         marca: ingreso.marca,
-        cantidad: ingreso.cantidad,
+        cantidad: ingreso.cantidad_disponible, // Usar cantidad_disponible
+        cantidad_total: ingreso.cantidad, // Mantener referencia a la cantidad original
         unidad: ingreso.unidad,
         fecha_vencimiento: ingreso.fechaVencimiento,
         fecha_ingreso: ingreso.fechaIngreso,
@@ -164,6 +157,7 @@ export function getProductosProximosVencer(diasUmbral = 30) {
 
 /**
  * Obtiene el stock total disponible agrupado por producto y marca
+ * Ahora usa cantidad_disponible directamente
  * @returns {Array} Lista con stock disponible
  */
 export function getStockGeneralDetallado() {
@@ -174,6 +168,7 @@ export function getStockGeneralDetallado() {
       p.marca,
       p.unidad,
       COALESCE(SUM(i.cantidad), 0) as totalIngresado,
+      COALESCE(SUM(i.cantidad_disponible), 0) as stockDisponible,
       COALESCE(
         (SELECT SUM(us.cantidad) 
          FROM user_stock us 
@@ -192,9 +187,58 @@ export function getStockGeneralDetallado() {
   
   return rows.map(row => ({
     ...row,
-    stockDisponible: row.totalIngresado - row.totalAsignado,
     porcentajeAsignado: row.totalIngresado > 0 
       ? Math.round((row.totalAsignado / row.totalIngresado) * 100) 
       : 0
   }));
+}
+
+/**
+ * Obtiene productos YA vencidos (fechaVencimiento < HOY)
+ * @returns {Array} Lista de productos vencidos con stock disponible
+ */
+export function getProductosVencidos() {
+  const hoy = new Date();
+
+  const query = `
+    SELECT 
+      i.id as ingreso_id,
+      i.productoId as producto_id,
+      p.nombre as producto_nombre,
+      p.marca,
+      i.cantidad,
+      i.cantidad_disponible,
+      i.unidad,
+      i.fechaVencimiento as fecha_vencimiento,
+      i.fechaIngreso as fecha_ingreso,
+      i.precio,
+      i.proveedorId as proveedor_id,
+      pr.nombre as proveedor_nombre
+    FROM ingresos i
+    INNER JOIN productos p ON i.productoId = p.id
+    LEFT JOIN proveedores pr ON i.proveedorId = pr.id
+    WHERE i.fechaVencimiento IS NOT NULL
+      AND i.fechaVencimiento != ''
+      AND i.cantidad_disponible > 0
+      AND p.activo = 1
+      AND DATE(i.fechaVencimiento) < DATE('now')
+    ORDER BY i.fechaVencimiento ASC
+  `;
+
+  const ingresos = db.prepare(query).all();
+  
+  return ingresos.map(ingreso => {
+    const fechaVenc = new Date(ingreso.fecha_vencimiento);
+    const diasVencido = Math.ceil((hoy - fechaVenc) / (1000 * 60 * 60 * 24));
+    
+    // Calcular valor proporcional: (cantidad_disponible / cantidad_total) * precio_total
+    const precioUnitario = (ingreso.precio || 0) / (ingreso.cantidad || 1);
+    const valorTotal = (ingreso.cantidad_disponible || 0) * precioUnitario;
+    
+    return {
+      ...ingreso,
+      dias_vencido: diasVencido,
+      valor_total: valorTotal
+    };
+  });
 }

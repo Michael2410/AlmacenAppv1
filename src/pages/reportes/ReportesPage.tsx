@@ -10,6 +10,7 @@ import {
   useStockUsuariosReport,
   useMovimientosReport,
 } from '../../hooks/useReportes';
+import { useReporteBajas, useReporteDevoluciones } from '../../hooks/useProductosVencidos';
 import {
   exportInventarioToExcel,
   exportInventarioToPDF,
@@ -74,6 +75,16 @@ export default function ReportesPage() {
       key: 'movimientos',
       label: '🔄 Movimientos',
       children: <MovimientosTab fechaInicio={fechaInicio} fechaFin={fechaFin} />
+    },
+    {
+      key: 'bajas',
+      label: '❌ Bajas de Inventario',
+      children: <BajasTab fechaInicio={fechaInicio} fechaFin={fechaFin} />
+    },
+    {
+      key: 'devoluciones',
+      label: '↩️ Devoluciones',
+      children: <DevolucionesTab fechaInicio={fechaInicio} fechaFin={fechaFin} />
     }
   ];
   
@@ -170,7 +181,7 @@ function InventarioTab({ productoId }: { productoId?: string }) {
         </Col>
         <Col span={8}>
           <Card>
-            <Statistic title="Valorización Total" value={totalValor} precision={2} prefix="$" />
+            <Statistic title="Valorización Total" value={totalValor} precision={2} prefix="S/." />
           </Card>
         </Col>
       </Row>
@@ -259,7 +270,7 @@ function IngresosTab({ fechaInicio, fechaFin, productoId }: { fechaInicio?: stri
         </Col>
         <Col span={8}>
           <Card>
-            <Statistic title="Valor Total" value={totales.totalValor} precision={2} prefix="$" />
+            <Statistic title="Valor Total" value={totales.totalValor} precision={2} prefix="S/." />
           </Card>
         </Col>
       </Row>
@@ -578,6 +589,237 @@ function MovimientosTab({ fechaInicio, fechaFin }: { fechaInicio?: string; fecha
                   <td className="px-2 py-2">{item.descripcion}</td>
                   <td className="px-2 py-2 text-right">{item.cantidad} {item.unidad}</td>
                   <td className="px-2 py-2">{item.origen || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function BajasTab({ fechaInicio, fechaFin }: { fechaInicio?: string; fechaFin?: string }) {
+  const { data, isLoading } = useReporteBajas({ fechaDesde: fechaInicio, fechaHasta: fechaFin });
+  
+  if (isLoading) return <div className="text-center py-8"><Spin size="large" /></div>;
+  if (!data || !data.bajas || data.bajas.length === 0) {
+    return <Empty description="Sin bajas de inventario registradas" />;
+  }
+  
+  const bajas = data.bajas;
+  const totalBajas = bajas.length;
+  const totalCantidad = bajas.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+  const totalValor = bajas.reduce((sum: number, item: any) => sum + (item.valor_perdida || 0), 0);
+  
+  return (
+    <div>
+      {/* Estadísticas */}
+      <Row gutter={16} className="mb-4">
+        <Col span={8}>
+          <Card>
+            <Statistic title="Total Bajas" value={totalBajas} valueStyle={{ color: '#cf1322' }} />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic title="Cantidad Total" value={totalCantidad} />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic 
+              title="Valor Total Perdido" 
+              value={totalValor} 
+              precision={2} 
+              prefix="S/." 
+              valueStyle={{ color: '#cf1322' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+      
+      {/* Botones */}
+      <Space className="mb-4">
+        <Button
+          type="primary"
+          icon={<FileExcelOutlined />}
+          onClick={() => exportToCSV(bajas, 'bajas_inventario')}
+        >
+          Exportar Excel
+        </Button>
+        <Button
+          icon={<FileTextOutlined />}
+          onClick={() => exportToCSV(bajas, 'bajas_inventario')}
+        >
+          Exportar CSV
+        </Button>
+      </Space>
+      
+      {/* Tabla */}
+      <Card title="Vista Previa" size="small">
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-100 sticky top-0">
+              <tr>
+                <th className="px-2 py-2 text-left">Fecha</th>
+                <th className="px-2 py-2 text-left">Producto</th>
+                <th className="px-2 py-2 text-left">Proveedor</th>
+                <th className="px-2 py-2 text-right">Cantidad</th>
+                <th className="px-2 py-2 text-left">Motivo</th>
+                <th className="px-2 py-2 text-right">Valor Perdido</th>
+                <th className="px-2 py-2 text-left">Usuario</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bajas.map((item: any) => (
+                <tr key={item.id} className="border-b hover:bg-gray-50">
+                  <td className="px-2 py-2">{new Date(item.fecha_baja).toLocaleDateString()}</td>
+                  <td className="px-2 py-2">{item.producto_nombre}</td>
+                  <td className="px-2 py-2">{item.proveedor_nombre}</td>
+                  <td className="px-2 py-2 text-right">{item.cantidad} {item.unidad}</td>
+                  <td className="px-2 py-2">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      item.motivo === 'VENCIDO' ? 'bg-orange-100 text-orange-800' :
+                      item.motivo === 'DAÑADO' ? 'bg-red-100 text-red-800' :
+                      item.motivo === 'OBSOLETO' ? 'bg-gray-100 text-gray-800' :
+                      'bg-purple-100 text-purple-800'
+                    }`}>
+                      {item.motivo}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-right font-semibold text-red-600">
+                    S/. {item.valor_perdida?.toFixed(2)}
+                  </td>
+                  <td className="px-2 py-2">{item.usuario_nombre}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function DevolucionesTab({ fechaInicio, fechaFin }: { fechaInicio?: string; fechaFin?: string }) {
+  const [estado, setEstado] = useState<'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO' | 'REEMBOLSADO'>();
+  const { data, isLoading } = useReporteDevoluciones({ 
+    fechaDesde: fechaInicio, 
+    fechaHasta: fechaFin,
+    estado 
+  });
+  
+  if (isLoading) return <div className="text-center py-8"><Spin size="large" /></div>;
+  if (!data || data.length === 0) return <Empty description="Sin devoluciones registradas" />;
+  
+  const totalDevoluciones = data.length;
+  const totalCantidad = data.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+  const totalValor = data.reduce((sum: number, item: any) => sum + (item.valor_devuelto || 0), 0);
+  const pendientes = data.filter((item: any) => item.estado === 'PENDIENTE').length;
+  
+  return (
+    <div>
+      {/* Filtro de Estado */}
+      <div className="mb-4">
+        <Select
+          style={{ width: 200 }}
+          placeholder="Filtrar por estado"
+          allowClear
+          value={estado}
+          onChange={setEstado}
+        >
+          <Select.Option value="PENDIENTE">Pendiente</Select.Option>
+          <Select.Option value="ACEPTADO">Aceptado</Select.Option>
+          <Select.Option value="RECHAZADO">Rechazado</Select.Option>
+          <Select.Option value="REEMBOLSADO">Reembolsado</Select.Option>
+        </Select>
+      </div>
+      
+      {/* Estadísticas */}
+      <Row gutter={16} className="mb-4">
+        <Col span={6}>
+          <Card>
+            <Statistic title="Total Devoluciones" value={totalDevoluciones} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="Pendientes" value={pendientes} valueStyle={{ color: '#faad14' }} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic title="Cantidad Total" value={totalCantidad} />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic 
+              title="Valor Total Devuelto" 
+              value={totalValor} 
+              precision={2} 
+              prefix="S/."
+            />
+          </Card>
+        </Col>
+      </Row>
+      
+      {/* Botones */}
+      <Space className="mb-4">
+        <Button
+          type="primary"
+          icon={<FileExcelOutlined />}
+          onClick={() => exportToCSV(data, 'devoluciones_proveedor')}
+        >
+          Exportar Excel
+        </Button>
+        <Button
+          icon={<FileTextOutlined />}
+          onClick={() => exportToCSV(data, 'devoluciones_proveedor')}
+        >
+          Exportar CSV
+        </Button>
+      </Space>
+      
+      {/* Tabla */}
+      <Card title="Vista Previa" size="small">
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-100 sticky top-0">
+              <tr>
+                <th className="px-2 py-2 text-left">Fecha</th>
+                <th className="px-2 py-2 text-left">Producto</th>
+                <th className="px-2 py-2 text-left">Proveedor</th>
+                <th className="px-2 py-2 text-right">Cantidad</th>
+                <th className="px-2 py-2 text-left">Motivo</th>
+                <th className="px-2 py-2 text-right">Valor Devuelto</th>
+                <th className="px-2 py-2 text-center">Estado</th>
+                <th className="px-2 py-2 text-left">Usuario</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((item: any) => (
+                <tr key={item.id} className="border-b hover:bg-gray-50">
+                  <td className="px-2 py-2">{new Date(item.fecha_devolucion).toLocaleDateString()}</td>
+                  <td className="px-2 py-2">{item.producto_nombre}</td>
+                  <td className="px-2 py-2">{item.proveedor_nombre}</td>
+                  <td className="px-2 py-2 text-right">{item.cantidad} {item.unidad}</td>
+                  <td className="px-2 py-2 text-sm">{item.motivo}</td>
+                  <td className="px-2 py-2 text-right font-semibold">
+                    S/. {item.valor_devuelto?.toFixed(2)}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      item.estado === 'PENDIENTE' ? 'bg-yellow-100 text-yellow-800' :
+                      item.estado === 'ACEPTADO' ? 'bg-green-100 text-green-800' :
+                      item.estado === 'RECHAZADO' ? 'bg-red-100 text-red-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {item.estado}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2">{item.usuario_nombre}</td>
                 </tr>
               ))}
             </tbody>

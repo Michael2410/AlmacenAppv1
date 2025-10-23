@@ -42,6 +42,26 @@ export type Permission =
   | 'reports.export'
   | 'reports.advanced'
   
+  // Productos Vencidos
+  | 'vencidos.view'
+  | 'vencidos.baja'
+  | 'vencidos.devolucion'
+  
+  // Cotizaciones
+  | 'cotizaciones.view'
+  | 'cotizaciones.create'
+  
+  // Órdenes de Compra
+  | 'ordenes.view'
+  | 'ordenes.create'
+  | 'ordenes.update'
+  | 'ordenes.delete'
+  | 'ordenes.approve'
+  | 'ordenes.seguimiento'
+  
+  // Configuración de Empresa
+  | 'empresa.config'
+  
   // Catálogos
   | 'areas.manage'
   | 'ubicaciones.manage'
@@ -97,6 +117,26 @@ export const PERMISSION_GROUPS = {
     'reports.export',
     'reports.advanced'
   ],
+  'Productos Vencidos': [
+    'vencidos.view',
+    'vencidos.baja',
+    'vencidos.devolucion'
+  ],
+  'Cotizaciones': [
+    'cotizaciones.view',
+    'cotizaciones.create'
+  ],
+  'Órdenes de Compra': [
+    'ordenes.view',
+    'ordenes.create',
+    'ordenes.update',
+    'ordenes.delete',
+    'ordenes.approve',
+    'ordenes.seguimiento'
+  ],
+  'Configuración': [
+    'empresa.config'
+  ],
   'Catálogos': [
     'areas.manage',
     'ubicaciones.manage',
@@ -146,6 +186,26 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'reports.export': 'Exportar reportes',
   'reports.advanced': 'Reportes avanzados',
   
+  // Productos Vencidos
+  'vencidos.view': 'Ver productos vencidos',
+  'vencidos.baja': 'Dar de baja productos vencidos',
+  'vencidos.devolucion': 'Devolver productos a proveedor',
+  
+  // Cotizaciones
+  'cotizaciones.view': 'Ver cotizaciones',
+  'cotizaciones.create': 'Crear cotizaciones',
+  
+  // Órdenes de Compra
+  'ordenes.view': 'Ver órdenes de compra',
+  'ordenes.create': 'Crear órdenes de compra',
+  'ordenes.update': 'Editar órdenes de compra',
+  'ordenes.delete': 'Cancelar órdenes de compra',
+  'ordenes.approve': 'Aprobar/Confirmar órdenes',
+  'ordenes.seguimiento': 'Gestionar seguimiento de entregas',
+  
+  // Configuración de Empresa
+  'empresa.config': 'Configurar datos de empresa',
+  
   // Catálogos
   'areas.manage': 'Gestionar áreas',
   'ubicaciones.manage': 'Gestionar ubicaciones',
@@ -164,6 +224,10 @@ export const PREDEFINED_ROLES: Record<string, Role> = {
       'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign',
       'reports.view', 'reports.export', 'reports.advanced',
       'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
+      'vencidos.view', 'vencidos.baja', 'vencidos.devolucion',
+      'cotizaciones.view', 'cotizaciones.create',
+      'ordenes.view', 'ordenes.create', 'ordenes.update', 'ordenes.delete', 'ordenes.approve', 'ordenes.seguimiento',
+      'empresa.config',
       'areas.manage', 'ubicaciones.manage', 'unidades.manage'
     ],
     predefined: true

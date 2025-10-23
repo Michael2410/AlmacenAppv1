@@ -31,12 +31,8 @@ export function getInventarioGeneralReport(filtros = {}) {
       (SELECT COALESCE(SUM(cantidad), 0) 
        FROM user_stock us 
        WHERE us.productoId = p.id) as stockDisponible,
-      -- Valorización (precio promedio * stock disponible)
-      AVG(i.precio) as precioPromedio,
-      (COALESCE(SUM(i.cantidad), 0) - 
-       (SELECT COALESCE(SUM(cantidad), 0) 
-        FROM user_stock us 
-        WHERE us.productoId = p.id)) * AVG(i.precio) as valorizacion,
+      -- Valorización usando cantidad_disponible por ingreso y precio unitario
+      COALESCE(SUM(i.cantidad_disponible * (i.precio / i.cantidad)), 0) as valorizacion,
       p.activo
     FROM productos p
     LEFT JOIN ingresos i ON p.id = i.productoId
@@ -82,7 +78,7 @@ export function getIngresosReport(filtros = {}) {
       i.cantidad,
       i.unidad,
       i.precio,
-      (i.cantidad * i.precio) as total,
+      i.precio as total,
       a.nombre as area,
       u.nombre as ubicacion,
       i.numeroSerie,
@@ -127,11 +123,11 @@ export function getIngresosReport(filtros = {}) {
   
   const ingresos = db.prepare(query).all(...params);
   
-  // Calcular totales
+  // Calcular totales (precio es total, no unitario)
   const totales = {
     totalRegistros: ingresos.length,
     totalUnidades: ingresos.reduce((sum, i) => sum + i.cantidad, 0),
-    totalValor: ingresos.reduce((sum, i) => sum + i.total, 0)
+    totalValor: ingresos.reduce((sum, i) => sum + (i.precio || 0), 0)
   };
   
   return { ingresos, totales };
@@ -286,7 +282,7 @@ export function getMovimientosReport(filtros = {}) {
         i.cantidad,
         i.unidad,
         i.precio,
-        (i.cantidad * i.precio) as valor,
+        i.precio as valor,
         prov.nombre as origen,
         a.nombre as area,
         u.nombre as ubicacion
@@ -439,10 +435,10 @@ export function getResumenEjecutivo(filtros = {}) {
     FROM users
   `).get();
   
-  // Valor total del inventario
+  // Valor total del inventario (usando cantidad_disponible × precio unitario)
   const valorInventario = db.prepare(`
     SELECT 
-      COALESCE(SUM(cantidad * precio), 0) as valor
+      COALESCE(SUM(cantidad_disponible * (precio / cantidad)), 0) as valor
     FROM ingresos
   `).get();
   

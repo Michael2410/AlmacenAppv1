@@ -44,6 +44,7 @@ export default function ProveedoresListPage() {
 
   const columns: ColumnsType<any> = [
     { title: 'Nombre', dataIndex: 'nombre', ...textFilter('nombre', 'nombre') },
+    { title: 'RUC', dataIndex: 'ruc', ...textFilter('ruc', 'RUC') },
     { title: 'Dirección', dataIndex: 'direccion', ...textFilter('direccion', 'dirección') },
     { title: 'Contacto', dataIndex: 'contacto', ...textFilter('contacto', 'contacto') },
     { title: 'Teléfono', dataIndex: 'telefono', ...textFilter('telefono', 'teléfono') },
@@ -73,6 +74,9 @@ export default function ProveedoresListPage() {
         <Form form={form} layout="vertical">
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>
             <Input />
+          </Form.Item>
+          <Form.Item name="ruc" label="RUC" rules={[{ required: true, len: 11, message: 'El RUC debe tener 11 dígitos' }]}>
+            <Input maxLength={11} placeholder="00000000000" />
           </Form.Item>
           <Form.Item name="direccion" label="Dirección" rules={[{ required: true }]}>
             <Input />

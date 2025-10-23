@@ -1,5 +1,5 @@
 import { Modal, Table, Button, Tag, Empty, Space, Typography } from 'antd';
-import { ShoppingCartOutlined, WarningOutlined } from '@ant-design/icons';
+import { FileDoneOutlined, WarningOutlined } from '@ant-design/icons';
 import { useLowStock } from '../../hooks/useStockDisponible';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,10 +16,10 @@ export default function LowStockModal({ open, onClose }: LowStockModalProps) {
 
   const productos = data || []; // El hook ya devuelve data.data directamente
 
-  const handleCreatePedido = (producto: any) => {
-    // Cerrar modal y navegar a crear pedido con el producto preseleccionado
+  const handleCreateCotizacion = (producto: any) => {
+    // Cerrar modal y navegar a cotizaciones
     onClose();
-    navigate('/pedidos/mios?producto=' + producto.producto_id);
+    navigate('/cotizaciones');
   };
 
   const columns = [
@@ -89,10 +89,10 @@ export default function LowStockModal({ open, onClose }: LowStockModalProps) {
         <Button
           type="primary"
           size="small"
-          icon={<ShoppingCartOutlined />}
-          onClick={() => handleCreatePedido(record)}
+          icon={<FileDoneOutlined />}
+          onClick={() => handleCreateCotizacion(record)}
         >
-          Crear Pedido
+          Crear Cotización
         </Button>
       ),
     },
