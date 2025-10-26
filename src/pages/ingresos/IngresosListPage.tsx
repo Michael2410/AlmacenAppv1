@@ -1,16 +1,18 @@
-import { DatePicker, Flex, Table, Input, Button, Card } from 'antd';
-import { ClearOutlined } from '@ant-design/icons';
+import { DatePicker, Flex, Table, Input, Button, Card, Modal, Typography } from 'antd';
+import { ClearOutlined, PlusOutlined, ProfileOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
-import ExportButton from '../../components/ExportButton';
 import { useIngresos } from '../../lib/api';
 import { useState, useMemo } from 'react';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
+import IngresoForm from '../../components/forms/IngresoForm';
 
 export default function IngresosListPage() {
   const { data } = useIngresos();
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs()]);
-
+  const [modalVisible, setModalVisible] = useState(false);
+const { Title } = Typography;
   const rows = data?.data ?? [];
 
   // Filtrar por búsqueda global y rango de fechas
@@ -58,7 +60,24 @@ export default function IngresosListPage() {
 
   return (
     <div className="space-y-3">
-      <Card title="Ingresos">
+      <Card 
+        title={
+
+                    <Title level={4} style={{ margin: 0 }}>
+            <ProfileOutlined style={{ marginRight: 8 }} />
+            Ingresos
+          </Title>
+        }
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setModalVisible(true)}
+          >
+            Nuevo Ingreso
+          </Button>
+        }
+      >
         {/* Filtros */}
         <Flex gap={8} align="center" wrap style={{ marginBottom: 16 }}>
           <Input.Search
@@ -89,20 +108,31 @@ export default function IngresosListPage() {
           rowKey="id"
           dataSource={filteredRows as any}
           columns={columns}
-          pagination={{
-            pageSize: 15,
-            showSizeChanger: true,
-            showTotal: (total, range) =>
-              `${range[0]}-${range[1]} de ${total} registros`,
-          }}
+          pagination={defaultPaginationConfig}
           style={{ marginTop: 12 }}
         />
 
         {/* Botón de exportar */}
         <div style={{ marginTop: 16, textAlign: "right" }}>
-          <ExportButton rows={filteredRows as any} filename="ingresos" />
         </div>
       </Card>
+
+      {/* Modal Nuevo Ingreso */}
+      <Modal
+        title="Registrar Nuevo Ingreso"
+        open={modalVisible}
+        onCancel={() => setModalVisible(false)}
+        footer={null}
+        width={900}
+        destroyOnClose
+      >
+        <IngresoForm 
+          onSuccess={() => {
+            setModalVisible(false);
+            // La tabla se recargará automáticamente gracias a React Query
+          }} 
+        />
+      </Modal>
     </div>
 
   );

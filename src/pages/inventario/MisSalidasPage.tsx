@@ -2,14 +2,14 @@ import { Button, Form, Input, InputNumber, Select, message, Table, Input as AntI
 import type { ColumnsType, ColumnType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useCrearSalida, useProductos, useSalidas } from '../../lib/api';
+import { useCrearMiSalida, useProductos, useMisSalidas } from '../../lib/api';
 
-export default function SalidasPage() {
-  const { data: sal } = useSalidas();
+export default function MisSalidasPage() {
+  const { data: sal } = useMisSalidas();
   const rows = sal?.data ?? [];
   const { data: prodsRes } = useProductos();
   const productos = prodsRes?.data ?? [];
-  const { mutateAsync } = useCrearSalida();
+  const { mutateAsync } = useCrearMiSalida();
   const [form] = Form.useForm();
 
   const onFinish = async (v: any) => {

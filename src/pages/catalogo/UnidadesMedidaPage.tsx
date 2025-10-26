@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, Table, Button, Modal, Form, Input, Space, message, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useUnidadesMedida, useCreateUnidadMedida, useUpdateUnidadMedida, useDeleteUnidadMedida } from '../../lib/api';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 interface UnidadMedidaCompleta {
   id: string;
@@ -145,7 +146,7 @@ export default function UnidadesMedidaPage() {
           columns={columns}
           dataSource={unidades}
           rowKey="id"
-          pagination={{ pageSize: 10 }}
+          pagination={defaultPaginationConfig}
           loading={isLoading}
         />
       </Card>

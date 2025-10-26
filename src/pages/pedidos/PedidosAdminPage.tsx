@@ -4,6 +4,7 @@ import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { usePedidos, useCambiarEstadoPedido, useAsignarPedido, useUsers, useProductos, useEntregarLote } from '../../lib/api';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 export default function PedidosAdminPage() {
   const { data } = usePedidos();
@@ -173,7 +174,7 @@ export default function PedidosAdminPage() {
         title="Pedidos"
 
       >
-        <Table rowKey="loteId" dataSource={lotes as any} columns={columns} pagination={{ pageSize: 10 }} />
+        <Table rowKey="loteId" dataSource={lotes as any} columns={columns} pagination={defaultPaginationConfig} />
       </Card>
       {/* Modal de detalle de productos */}
       <Modal

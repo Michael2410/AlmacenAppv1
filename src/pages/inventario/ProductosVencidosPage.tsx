@@ -169,14 +169,6 @@ export default function ProductosVencidosPage() {
         <h1 className="text-2xl font-bold">Productos Vencidos</h1>
       </div>
 
-      <Alert
-        message="Gestión de Productos Vencidos"
-        description="Esta vista muestra todos los productos que han superado su fecha de vencimiento y aún tienen stock disponible. Puede dar de baja o devolver al proveedor estos productos."
-        type="warning"
-        showIcon
-        icon={<ExclamationCircleOutlined />}
-        closable
-      />
 
       {/* Estadísticas */}
       <Row gutter={16}>
@@ -280,8 +272,6 @@ export default function ProductosVencidosPage() {
           >
             <Select>
               <Select.Option value="VENCIDO">Vencido</Select.Option>
-              <Select.Option value="DAÑADO">Dañado</Select.Option>
-              <Select.Option value="OBSOLETO">Obsoleto</Select.Option>
               <Select.Option value="OTRO">Otro</Select.Option>
             </Select>
           </Form.Item>

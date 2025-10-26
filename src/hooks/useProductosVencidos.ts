@@ -22,7 +22,7 @@ export interface ProductoVencido {
 export interface BajaInventario {
   ingreso_id: string;
   cantidad: number;
-  motivo: 'VENCIDO' | 'DAÑADO' | 'OBSOLETO' | 'OTRO';
+  motivo: 'VENCIDO' |'OTRO';
   observacion?: string;
 }
 

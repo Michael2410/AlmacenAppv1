@@ -30,8 +30,6 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <Title level={2}>Dashboard</Title>
-      <Divider />
 
       {/* KPIs Grid */}
       <Row gutter={[16, 16]}>

@@ -16,7 +16,7 @@ export default function LowStockModal({ open, onClose }: LowStockModalProps) {
 
   const productos = data || []; // El hook ya devuelve data.data directamente
 
-  const handleCreateCotizacion = (producto: any) => {
+  const handleCreateCotizacion = (_producto: any) => {
     // Cerrar modal y navegar a cotizaciones
     onClose();
     navigate('/cotizaciones');

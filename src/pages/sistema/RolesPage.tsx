@@ -34,6 +34,7 @@ interface PermissionGroupProps {
   groupPermissions: readonly string[];
   selectedPermissions: string[];
   onPermissionChange: (permission: string, checked: boolean) => void;
+  onGroupChange: (permissions: readonly string[], checked: boolean) => void;
   disabled?: boolean;
 }
 
@@ -42,17 +43,14 @@ const PermissionGroup: React.FC<PermissionGroupProps> = ({
   groupPermissions, 
   selectedPermissions, 
   onPermissionChange,
+  onGroupChange,
   disabled = false
 }) => {
   const isAllChecked = groupPermissions.every(p => selectedPermissions.includes(p));
   const isIndeterminate = groupPermissions.some(p => selectedPermissions.includes(p)) && !isAllChecked;
 
   const handleGroupChange = (checked: boolean) => {
-    // Procesar todos los permisos del grupo de manera secuencial
-    // para evitar problemas de estado compartido
-    for (const permission of groupPermissions) {
-      onPermissionChange(permission, checked);
-    }
+    onGroupChange(groupPermissions, checked);
   };
 
   return (
@@ -253,11 +251,11 @@ const RolesPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="space-y-2">
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <Title level={4} style={{ margin: 0 }}>
-            <SettingOutlined style={{ marginRight: 8 }} />
+            <SettingOutlined style={{ marginRight: 8 }} /> 
             Gestión de Roles y Permisos
           </Title>
           <Button 
@@ -328,21 +326,44 @@ const RolesPage: React.FC = () => {
                           groupKey={groupKey}
                           groupPermissions={groupPermissions}
                           selectedPermissions={value}
+                          onGroupChange={(permissions, checked) => {
+                            // Obtener valor actual
+                            const current = form.getFieldValue('permissions') || [];
+                            
+                            let updated: string[];
+                            if (checked) {
+                              // Agregar todos los permisos del grupo que no existan
+                              const newPerms = permissions.filter(p => !current.includes(p));
+                              updated = [...current, ...newPerms];
+                            } else {
+                              // Remover todos los permisos del grupo
+                              updated = current.filter((p: string) => !permissions.includes(p));
+                            }
+                            
+                            // Actualizar y forzar re-render
+                            form.setFieldValue('permissions', updated);
+                            form.validateFields(['permissions']);
+                          }}
                           onPermissionChange={(permission, checked) => {
                             // Obtener valor actual directamente del form
                             const current = form.getFieldValue('permissions') || [];
                             
+                            let updated: string[];
                             if (checked) {
                               // Agregar si no existe
                               if (!current.includes(permission)) {
-                                const updated = [...current, permission];
-                                form.setFieldValue('permissions', updated);
+                                updated = [...current, permission];
+                              } else {
+                                updated = current;
                               }
                             } else {
                               // Remover
-                              const updated = current.filter((p: string) => p !== permission);
-                              form.setFieldValue('permissions', updated);
+                              updated = current.filter((p: string) => p !== permission);
                             }
+                            
+                            // Actualizar y forzar re-render
+                            form.setFieldValue('permissions', updated);
+                            form.validateFields(['permissions']); // Forzar validación
                           }}
                         />
                       </Panel>

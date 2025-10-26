@@ -19,21 +19,9 @@ export default function InventarioPage() {
   const showSwitcher = isAdmin;
   
   // Para usuarios sin permisos de ver todo, mostrar solo su inventario
-  if (!isAdmin) {
-    return <MiInventarioPage />;
-  }
+
+    return <AlmacenGeneralPage />;
+
   
-  return (
-    <div className="space-y-3">
-      {showSwitcher && (
-        <Segmented
-          options={[{ label: 'Almacén General', value: 'general' }, { label: 'Mi Inventario', value: 'mio' }]}
-          value={view}
-          onChange={(val) => { setView(val as any); setSp(prev => { const p = new URLSearchParams(prev); p.set('view', String(val)); return p; }); }}
-        />
-      )}
-      {view === 'mio' && <MiInventarioPage />}
-      {view === 'general' && <AlmacenGeneralPage />}
-    </div>
-  );
+
 }

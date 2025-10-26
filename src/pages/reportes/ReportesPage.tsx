@@ -89,7 +89,7 @@ export default function ReportesPage() {
   ];
   
   return (
-    <div className="p-6">
+    <div className="space-y-2">
       <Card
         title={
           <div className="flex items-center justify-between">

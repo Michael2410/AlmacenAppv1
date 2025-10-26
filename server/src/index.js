@@ -27,6 +27,12 @@ app.use(cors());
 app.use(express.json());
 app.use(auditMiddleware); // Capturar IP y User Agent
 
+// Log global de todas las peticiones
+app.use((req, res, next) => {
+  console.log(`🌐 ${req.method} ${req.path}`);
+  next();
+});
+
 // Servir archivos estáticos del frontend
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -39,22 +45,72 @@ function authMiddleware(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   
-  if (!token) return res.status(401).json({ success: false, message: 'No token' });
+  if (!token) {
+    console.log('❌ authMiddleware: No token en', req.path);
+    return res.status(401).json({ success: false, message: 'No token' });
+  }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.user = payload;
+    console.log('✅ authMiddleware OK para', req.path, '- Usuario:', payload.email);
     next();
   } catch (e) {
-    console.error('Token verification error:', e.message);
+    console.error('❌ Token verification error:', e.message);
     return res.status(401).json({ success: false, message: 'Invalid token' });
   }
 }
 
 function requireAdmin(req, res, next) {
   if (req.user?.roleId !== 'role-admin') {
+    console.log('❌ requireAdmin FALLÓ en', req.path, '- RoleId:', req.user?.roleId);
     return res.status(403).json({ success: false, message: 'Prohibido - Se requiere rol de administrador' });
   }
+  console.log('✅ requireAdmin OK para', req.path);
   next();
+}
+
+// Middleware para verificar permisos específicos
+function requirePermission(...requiredPermissions) {
+  return (req, res, next) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      console.log('❌ requirePermission: Usuario no autenticado en', req.path);
+      return res.status(401).json({ success: false, message: 'No autenticado' });
+    }
+
+    // Obtener usuario con su rol
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      console.log('❌ requirePermission: Usuario no encontrado en', req.path);
+      return res.status(403).json({ success: false, message: 'Usuario no encontrado' });
+    }
+
+    // Obtener permisos del rol
+    const role = db.prepare('SELECT * FROM roles WHERE id = ?').get(user.roleId);
+    const rolePermissions = role ? JSON.parse(role.permissions || '[]') : [];
+    
+    // Obtener permisos individuales del usuario
+    const userPermissions = user.permissions ? JSON.parse(user.permissions) : [];
+    
+    // Combinar permisos (rol + individuales)
+    const allPermissions = [...new Set([...rolePermissions, ...userPermissions])];
+    
+    // Verificar si tiene alguno de los permisos requeridos
+    const hasPermission = requiredPermissions.some(perm => allPermissions.includes(perm));
+    
+    if (!hasPermission) {
+      console.log('❌ requirePermission FALLÓ en', req.path);
+      console.log('   Requerido:', requiredPermissions);
+      console.log('   Usuario tiene:', allPermissions);
+      return res.status(403).json({ 
+        success: false, 
+        message: 'No tienes permisos suficientes para realizar esta acción' 
+      });
+    }
+    
+    console.log('✅ requirePermission OK para', req.path, '- Permisos:', requiredPermissions);
+    next();
+  };
 }
 
 // Helper function to check if user has admin-like permissions
@@ -468,7 +524,7 @@ app.get('/api/ingresos', authMiddleware, (req, res) => {
   res.json({ success: true, data: list });
 });
 app.post('/api/ingresos', authMiddleware, requireAdmin, (req, res) => {
-  const { productoId, proveedorId, nombre, fechaIngreso, cantidad, precio, fechaVencimiento = null, numeroSerie = null, serieFactura = null, fechaFactura = null, marca = null } = req.body;
+  const { productoId, proveedorId, nombre, fechaIngreso, cantidad, precio, fechaVencimiento = null, serieFactura = null, fechaFactura = null, marca = null } = req.body;
   if (!productoId || !proveedorId || !fechaIngreso || !cantidad || !precio) {
     return res.status(400).json({ success: false, message: 'Datos incompletos' });
   }
@@ -486,9 +542,9 @@ app.post('/api/ingresos', authMiddleware, requireAdmin, (req, res) => {
   const unidad = producto.unidad;
   
   // Inicializar cantidad_disponible con el mismo valor que cantidad
-  db.prepare('INSERT INTO ingresos (id, productoId, proveedorId, nombre, fechaIngreso, cantidad, cantidad_disponible, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, productoId, proveedorId, nombreFinal, fechaIngreso, cantidad, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca);
-  res.json({ success: true, data: { id, productoId, proveedorId, nombre: nombreFinal, fechaIngreso, cantidad, cantidad_disponible: cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, numeroSerie, serieFactura, fechaFactura, marca } });
+  db.prepare('INSERT INTO ingresos (id, productoId, proveedorId, nombre, fechaIngreso, cantidad, cantidad_disponible, unidad, precio, areaId, ubicacionId, fechaVencimiento, serieFactura, fechaFactura, marca) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, productoId, proveedorId, nombreFinal, fechaIngreso, cantidad, cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, serieFactura, fechaFactura, marca);
+  res.json({ success: true, data: { id, productoId, proveedorId, nombre: nombreFinal, fechaIngreso, cantidad, cantidad_disponible: cantidad, unidad, precio, areaId, ubicacionId, fechaVencimiento, serieFactura, fechaFactura, marca } });
 });
 
 // Referencias
@@ -744,10 +800,15 @@ app.get('/api/stock/mio', authMiddleware, (req, res) => {
 });
 
 // Salidas de usuario: registro y listado propio
+// RUTA COMENTADA - Conflicto con nueva funcionalidad de salidas por daño/pérdida
+// Esta ruta era para salidas de workers (user_salidas)
+// Si se necesita en el futuro, cambiar las rutas a /api/user-salidas
+/*
 app.get('/api/salidas', authMiddleware, (req, res) => {
   const list = db.prepare('SELECT * FROM user_salidas WHERE usuarioId = ? ORDER BY fecha DESC').all(req.user.id);
   res.json({ success: true, data: list });
 });
+/*
 app.post('/api/salidas', authMiddleware, (req, res) => {
   const { productoId, cantidad, unidad, observacion } = req.body;
   if (!productoId || !cantidad || !unidad) return res.status(400).json({ success: false, message: 'Datos incompletos' });
@@ -765,6 +826,7 @@ app.post('/api/salidas', authMiddleware, (req, res) => {
     .run(id, req.user.id, productoId, cantidad, unidad, fecha, observacion ?? null);
   res.json({ success: true, data: { id, usuarioId: req.user.id, productoId, cantidad, unidad, fecha, observacion: observacion ?? null } });
 });
+*/
 app.get('/api/stock/general', authMiddleware, requireAdmin, (req, res) => {
   const productos = db.prepare('SELECT * FROM productos').all();
   const rows = db.prepare(`
@@ -1582,8 +1644,6 @@ app.get('/api/reportes/bajas', authMiddleware, requireAdmin, (req, res) => {
       total_perdida: bajas.reduce((sum, b) => sum + (b.valor_perdida || 0), 0),
       por_motivo: {
         VENCIDO: bajas.filter(b => b.motivo === 'VENCIDO').length,
-        DAÑADO: bajas.filter(b => b.motivo === 'DAÑADO').length,
-        OBSOLETO: bajas.filter(b => b.motivo === 'OBSOLETO').length,
         OTRO: bajas.filter(b => b.motivo === 'OTRO').length
       }
     };
@@ -1637,6 +1697,438 @@ app.get('/api/reportes/devoluciones', authMiddleware, requireAdmin, (req, res) =
     
     res.json({ success: true, data: devoluciones });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE SALIDAS (BAJAS) POR DAÑO, PÉRDIDA, ETC. ======
+
+// Listar ingresos disponibles para salidas
+app.get('/api/salidas/ingresos-disponibles', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { productoId, areaId, proveedorId } = req.query;
+    
+    let query = `
+      SELECT 
+        i.id,
+        i.productoId,
+        i.proveedorId,
+        i.nombre as productoNombre,
+        i.fechaIngreso,
+        i.cantidad,
+        i.cantidad_disponible,
+        i.unidad,
+        i.precio,
+        i.fechaVencimiento,
+        i.serieFactura,
+        i.fechaFactura,
+        i.marca,
+        p.nombre as producto_nombre,
+        pr.nombre as proveedor_nombre,
+        a.nombre as area_nombre,
+        u.nombre as ubicacion_nombre
+      FROM ingresos i
+      INNER JOIN productos p ON i.productoId = p.id
+      INNER JOIN proveedores pr ON i.proveedorId = pr.id
+      INNER JOIN areas a ON i.areaId = a.id
+      INNER JOIN ubicaciones u ON i.ubicacionId = u.id
+      WHERE i.cantidad_disponible > 0
+    `;
+    
+    const params = [];
+    
+    if (productoId) {
+      query += ' AND i.productoId = ?';
+      params.push(productoId);
+    }
+    
+    if (areaId) {
+      query += ' AND i.areaId = ?';
+      params.push(areaId);
+    }
+    
+    if (proveedorId) {
+      query += ' AND i.proveedorId = ?';
+      params.push(proveedorId);
+    }
+    
+    query += ' ORDER BY i.fechaIngreso DESC';
+    
+    const ingresos = db.prepare(query).all(...params);
+    
+    res.json({ success: true, data: ingresos });
+  } catch (error) {
+    console.error('❌ Error al listar ingresos disponibles:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Crear salida (baja de inventario)
+app.post('/api/salidas', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { ingreso_id, cantidad, tipo, motivo, observacion } = req.body;
+    
+    console.log('📥 POST /api/salidas - Body recibido:', req.body);
+    
+    // Validar datos requeridos
+    if (!ingreso_id || !cantidad || !tipo || !motivo) {
+      console.log('❌ Validación falló:', { ingreso_id, cantidad, tipo, motivo });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Datos incompletos: ingreso_id, cantidad, tipo y motivo son requeridos' 
+      });
+    }
+    
+    // Validar tipo
+    const tiposValidos = ['PERDIDA', 'DAÑADO', 'MERMA', 'BAJA_VOLUNTARIA', 'DONACION', 'MUESTRA', 'VENCIDO'];
+    if (!tiposValidos.includes(tipo)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Tipo inválido. Debe ser uno de: ${tiposValidos.join(', ')}` 
+      });
+    }
+    
+    // Validar cantidad
+    if (cantidad <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'La cantidad debe ser mayor a 0' 
+      });
+    }
+    
+    // Obtener el ingreso
+    const ingreso = db.prepare('SELECT * FROM ingresos WHERE id = ?').get(ingreso_id);
+    console.log('📦 Ingreso encontrado:', ingreso);
+    
+    if (!ingreso) {
+      return res.status(404).json({ success: false, message: 'Ingreso no encontrado' });
+    }
+    
+    // Validar que haya suficiente stock disponible
+    if (cantidad > ingreso.cantidad_disponible) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Stock insuficiente. Disponible: ${ingreso.cantidad_disponible} ${ingreso.unidad}` 
+      });
+    }
+    
+    // Calcular valor de pérdida (precio unitario = precio total / cantidad total)
+    const precioUnitario = (ingreso.precio || 0) / (ingreso.cantidad || 1);
+    const valorPerdida = cantidad * precioUnitario;
+    
+    console.log('💰 Valor pérdida calculado:', valorPerdida, 'precioUnitario:', precioUnitario);
+    
+    // Crear registro de baja
+    const bajaId = `b${Date.now()}`;
+    
+    const insertParams = [
+      bajaId, 
+      ingreso_id, 
+      ingreso.productoId, 
+      cantidad, 
+      ingreso.unidad,
+      tipo,
+      motivo, 
+      observacion || null, 
+      new Date().toISOString(), 
+      req.user.id, 
+      valorPerdida
+    ];
+    
+    console.log('📝 Intentando insertar con parámetros:', insertParams);
+    
+    const insertResult = db.prepare(`
+      INSERT INTO bajas_inventario (
+        id, ingreso_id, producto_id, cantidad, unidad, tipo,
+        motivo, observacion, fecha_baja, usuario_id, valor_perdida
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(...insertParams);
+    
+    console.log('✅ INSERT exitoso. Changes:', insertResult.changes, 'LastInsertRowid:', insertResult.lastInsertRowid);
+    
+    // Descontar de cantidad_disponible
+    const updateResult = db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?')
+      .run(cantidad, ingreso_id);
+    
+    console.log('✅ UPDATE exitoso. Changes:', updateResult.changes);
+    
+    // Obtener producto para el log
+    const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(ingreso.productoId);
+    
+    // Registrar en auditoría
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'CREAR_SALIDA',
+      modulo: 'salidas',
+      entidadId: bajaId,
+      entidadDescripcion: `Salida de ${cantidad} ${ingreso.unidad} de ${producto?.nombre || ingreso.productoId} por ${tipo}: ${motivo}`,
+      cambios: { ingreso_id, cantidad, tipo, motivo, valorPerdida },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    const cantidadRestante = ingreso.cantidad_disponible - cantidad;
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        id: bajaId, 
+        ingreso_id, 
+        cantidad, 
+        tipo,
+        cantidad_restante: cantidadRestante,
+        valor_perdida: valorPerdida
+      } 
+    });
+  } catch (error) {
+    console.error('❌ Error al crear salida:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Listar historial de salidas
+app.get('/api/salidas', authMiddleware, requireAdmin, (req, res) => {
+  console.log('🎯 Dentro del handler GET /api/salidas');
+  try {
+    const { fechaDesde, fechaHasta, tipo, productoId } = req.query;
+    
+    let query = `
+      SELECT 
+        b.id,
+        b.ingreso_id,
+        b.fecha_baja,
+        b.tipo,
+        p.nombre as producto_nombre,
+        pr.nombre as proveedor_nombre,
+        b.cantidad,
+        b.unidad,
+        b.motivo,
+        b.observacion,
+        b.valor_perdida,
+        u.nombres as usuario_nombre,
+        i.serieFactura,
+        i.fechaFactura,
+        i.marca
+      FROM bajas_inventario b
+      INNER JOIN productos p ON b.producto_id = p.id
+      INNER JOIN ingresos i ON b.ingreso_id = i.id
+      INNER JOIN proveedores pr ON i.proveedorId = pr.id
+      INNER JOIN users u ON b.usuario_id = u.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    if (fechaDesde) {
+      query += ' AND DATE(b.fecha_baja) >= DATE(?)';
+      params.push(fechaDesde);
+    }
+    
+    if (fechaHasta) {
+      query += ' AND DATE(b.fecha_baja) <= DATE(?)';
+      params.push(fechaHasta);
+    }
+    
+    if (tipo) {
+      query += ' AND b.tipo = ?';
+      params.push(tipo);
+    }
+    
+    if (productoId) {
+      query += ' AND b.producto_id = ?';
+      params.push(productoId);
+    }
+    
+    query += ' ORDER BY b.fecha_baja DESC';
+    
+    console.log('🔍 Query completo:', query);
+    console.log('🔍 Parámetros:', params);
+    
+    const salidas = db.prepare(query).all(...params);
+    
+    console.log('📊 GET /api/salidas - Encontradas:', salidas.length, 'salidas');
+    if (salidas.length > 0) {
+      console.log('📄 Primera salida:', salidas[0]);
+    }
+    
+    // Verificar si hay registros en bajas_inventario
+    const totalBajas = db.prepare('SELECT COUNT(*) as total FROM bajas_inventario').get();
+    console.log('💾 Total registros en bajas_inventario:', totalBajas);
+    
+    // Calcular resumen
+    const resumen = {
+      total_salidas: salidas.length,
+      total_perdida: salidas.reduce((sum, s) => sum + (s.valor_perdida || 0), 0),
+      por_tipo: {
+        PERDIDA: salidas.filter(s => s.tipo === 'PERDIDA').length,
+        DAÑADO: salidas.filter(s => s.tipo === 'DAÑADO').length,
+        MERMA: salidas.filter(s => s.tipo === 'MERMA').length,
+        BAJA_VOLUNTARIA: salidas.filter(s => s.tipo === 'BAJA_VOLUNTARIA').length,
+        DONACION: salidas.filter(s => s.tipo === 'DONACION').length,
+        MUESTRA: salidas.filter(s => s.tipo === 'MUESTRA').length,
+        VENCIDO: salidas.filter(s => s.tipo === 'VENCIDO').length
+      }
+    };
+    
+    console.log('📈 Resumen:', resumen);
+    
+    res.json({ success: true, data: { salidas, resumen } });
+  } catch (error) {
+    console.error('❌ Error al listar salidas:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Eliminar salida (solo admin)
+app.delete('/api/salidas/:id', authMiddleware, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Obtener la salida antes de eliminarla
+    const salida = db.prepare('SELECT * FROM bajas_inventario WHERE id = ?').get(id);
+    if (!salida) {
+      return res.status(404).json({ success: false, message: 'Salida no encontrada' });
+    }
+    
+    // Restaurar cantidad_disponible
+    db.prepare('UPDATE ingresos SET cantidad_disponible = cantidad_disponible + ? WHERE id = ?')
+      .run(salida.cantidad, salida.ingreso_id);
+    
+    // Eliminar el registro
+    db.prepare('DELETE FROM bajas_inventario WHERE id = ?').run(id);
+    
+    // Registrar en auditoría
+    logAudit({
+      usuarioId: req.user.id,
+      accion: 'ELIMINAR_SALIDA',
+      modulo: 'salidas',
+      entidadId: id,
+      entidadDescripcion: `Eliminó salida de ${salida.cantidad} ${salida.unidad} (${salida.tipo})`,
+      cambios: { salida_eliminada: salida },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    res.json({ success: true, message: 'Salida eliminada correctamente' });
+  } catch (error) {
+    console.error('❌ Error al eliminar salida:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ====== ENDPOINTS DE SALIDAS PARA TRABAJADORES ======
+
+// Listar mis salidas (solo del usuario autenticado)
+app.get('/api/salidas/mis-salidas', authMiddleware, (req, res) => {
+  console.log('🎯 GET /api/salidas/mis-salidas - Usuario:', req.user.email);
+  try {
+    const userId = req.user.id;
+    
+    // Obtener salidas del usuario desde user_salidas
+    const query = `
+      SELECT 
+        us.id,
+        us.productoId,
+        us.cantidad,
+        us.unidad,
+        us.fecha,
+        us.observacion,
+        p.nombre as producto_nombre
+      FROM user_salidas us
+      INNER JOIN productos p ON us.productoId = p.id
+      WHERE us.usuarioId = ?
+      ORDER BY us.fecha DESC
+    `;
+    
+    const salidas = db.prepare(query).all(userId);
+    
+    console.log('📊 Encontradas', salidas.length, 'salidas del usuario');
+    
+    res.json({ 
+      success: true, 
+      data: salidas 
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener mis salidas:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Crear una salida (trabajador registra uso de producto)
+app.post('/api/salidas/mis-salidas', authMiddleware, (req, res) => {
+  console.log('📥 POST /api/salidas/mis-salidas - Body:', req.body);
+  try {
+    const { productoId, cantidad, unidad, observacion } = req.body;
+    const userId = req.user.id;
+    
+    if (!productoId || !cantidad || !unidad) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Datos incompletos: productoId, cantidad y unidad son requeridos' 
+      });
+    }
+    
+    // Validar stock disponible del usuario
+    const stockQuery = `
+      SELECT COALESCE(SUM(us.cantidad), 0) - COALESCE(
+        (SELECT SUM(sal.cantidad) 
+         FROM user_salidas sal 
+         WHERE sal.usuarioId = us.usuarioId 
+         AND sal.productoId = us.productoId 
+         AND sal.unidad = us.unidad), 0
+      ) AS disponible
+      FROM user_stock us
+      WHERE us.usuarioId = ? AND us.productoId = ? AND us.unidad = ?
+    `;
+    
+    const stockRow = db.prepare(stockQuery).get(userId, productoId, unidad);
+    const disponible = stockRow?.disponible || 0;
+    
+    if (cantidad > disponible) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Stock insuficiente. Disponible: ${disponible} ${unidad}` 
+      });
+    }
+    
+    // Crear el registro de salida
+    const id = `out-${Date.now()}-${userId}`;
+    const fecha = new Date().toISOString();
+    
+    db.prepare(`
+      INSERT INTO user_salidas (id, usuarioId, productoId, cantidad, unidad, fecha, observacion) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, productoId, cantidad, unidad, fecha, observacion || null);
+    
+    // Registrar en auditoría
+    const producto = db.prepare('SELECT nombre FROM productos WHERE id = ?').get(productoId);
+    logAudit({
+      usuarioId: userId,
+      accion: 'CREAR_SALIDA_PERSONAL',
+      modulo: 'mis-salidas',
+      entidadId: id,
+      entidadDescripcion: `Registró salida de ${cantidad} ${unidad} de ${producto?.nombre || productoId}`,
+      cambios: { productoId, cantidad, unidad, observacion },
+      ip: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent
+    });
+    
+    console.log('✅ Salida personal creada:', id);
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        id, 
+        usuarioId: userId, 
+        productoId, 
+        cantidad, 
+        unidad, 
+        fecha, 
+        observacion: observacion || null 
+      } 
+    });
+  } catch (error) {
+    console.error('❌ Error al crear salida personal:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1712,7 +2204,7 @@ app.post('/api/empresa/logo', authMiddleware, requireAdmin, (req, res) => {
 // ====== ENDPOINTS DE COTIZACIONES ======
 
 // Obtener todas las cotizaciones
-app.get('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/cotizaciones', authMiddleware, requirePermission('cotizaciones.view'), (req, res) => {
   try {
     const cotizaciones = db.prepare(`
       SELECT 
@@ -1739,7 +2231,7 @@ app.get('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Obtener detalle de una cotización
-app.get('/api/cotizaciones/:id', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/cotizaciones/:id', authMiddleware, requirePermission('cotizaciones.view'), (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1771,7 +2263,7 @@ app.get('/api/cotizaciones/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Crear nueva cotización
-app.post('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/cotizaciones', authMiddleware, requirePermission('cotizaciones.create'), (req, res) => {
   try {
     const { proveedor_id, productos, observaciones } = req.body;
     
@@ -1846,7 +2338,7 @@ app.post('/api/cotizaciones', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Generar PDF de cotización
-app.get('/api/cotizaciones/:id/pdf', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/cotizaciones/:id/pdf', authMiddleware, requirePermission('cotizaciones.view'), (req, res) => {
   try {
     const { id } = req.params;
     
@@ -2028,7 +2520,7 @@ app.get('/api/cotizaciones/:id/pdf', authMiddleware, requireAdmin, (req, res) =>
 // ====== ENDPOINTS DE ÓRDENES DE COMPRA ======
 
 // Listar órdenes de compra con filtros
-app.get('/api/ordenes-compra', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/ordenes-compra', authMiddleware, requirePermission('ordenes.view'), (req, res) => {
   try {
     const { estado, proveedor_id, fecha_desde, fecha_hasta } = req.query;
     
@@ -2078,7 +2570,7 @@ app.get('/api/ordenes-compra', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Obtener detalle de una orden de compra
-app.get('/api/ordenes-compra/:id', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/ordenes-compra/:id', authMiddleware, requirePermission('ordenes.view'), (req, res) => {
   try {
     const { id } = req.params;
     
@@ -2347,7 +2839,7 @@ app.post('/api/ordenes-compra/:id/seguimiento', authMiddleware, requireAdmin, (r
 });
 
 // Generar PDF de orden de compra
-app.get('/api/ordenes-compra/:id/pdf', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/ordenes-compra/:id/pdf', authMiddleware, requirePermission('ordenes.view'), (req, res) => {
   try {
     const { id } = req.params;
     
@@ -2771,7 +3263,7 @@ app.get('/api/dashboard/activity', authMiddleware, (req, res) => {
 // ====== ENDPOINTS DE REPORTES ======
 
 // Reporte de Inventario General
-app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
+app.get('/api/reportes/inventario', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { productoId, areaId } = req.query;
     const data = getInventarioGeneralReport({ productoId, areaId });
@@ -2792,7 +3284,7 @@ app.get('/api/reportes/inventario', authMiddleware, (req, res) => {
 });
 
 // Reporte de Ingresos
-app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
+app.get('/api/reportes/ingresos', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { fechaInicio, fechaFin, productoId, proveedorId } = req.query;
     const data = getIngresosReport({ fechaInicio, fechaFin, productoId, proveedorId });
@@ -2813,7 +3305,7 @@ app.get('/api/reportes/ingresos', authMiddleware, (req, res) => {
 });
 
 // Reporte de Pedidos
-app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
+app.get('/api/reportes/pedidos', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { fechaInicio, fechaFin, usuarioId, estado, productoId } = req.query;
     const data = getPedidosReport({ fechaInicio, fechaFin, usuarioId, estado, productoId });
@@ -2834,7 +3326,7 @@ app.get('/api/reportes/pedidos', authMiddleware, (req, res) => {
 });
 
 // Reporte de Stock por Usuario
-app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
+app.get('/api/reportes/stock-usuarios', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { usuarioId } = req.query;
     const data = getStockPorUsuarioReport({ usuarioId });
@@ -2855,7 +3347,7 @@ app.get('/api/reportes/stock-usuarios', authMiddleware, (req, res) => {
 });
 
 // Reporte de Movimientos
-app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
+app.get('/api/reportes/movimientos', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { fechaInicio, fechaFin, tipo } = req.query;
     const data = getMovimientosReport({ fechaInicio, fechaFin, tipo });
@@ -2876,7 +3368,7 @@ app.get('/api/reportes/movimientos', authMiddleware, (req, res) => {
 });
 
 // Resumen Ejecutivo para Reportes
-app.get('/api/reportes/resumen', authMiddleware, (req, res) => {
+app.get('/api/reportes/resumen', authMiddleware, requirePermission('reports.view'), (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query;
     const data = getResumenEjecutivo({ fechaInicio, fechaFin });

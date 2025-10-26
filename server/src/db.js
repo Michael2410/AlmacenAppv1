@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS bajas_inventario (
   producto_id TEXT NOT NULL,
   cantidad REAL NOT NULL,
   unidad TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'PERDIDA',
   motivo TEXT NOT NULL,
   observacion TEXT,
   fecha_baja TEXT NOT NULL,
@@ -444,6 +445,17 @@ try {
   console.error('⚠️ Error en migración de pedidos:', e.message);
 }
 
+// Migración: Agregar tipo a bajas_inventario
+try {
+  const colsBajas = db.prepare("PRAGMA table_info('bajas_inventario')").all();
+  if (!colsBajas.some(c => c.name === 'tipo')) {
+    console.log('  ➕ Agregando columna tipo a bajas_inventario');
+    db.exec("ALTER TABLE bajas_inventario ADD COLUMN tipo TEXT NOT NULL DEFAULT 'PERDIDA'");
+  }
+} catch (e) {
+  console.error('⚠️ Error en migración de bajas_inventario:', e.message);
+}
+
 console.log('✅ Migraciones completadas');
 
 // ========================================
@@ -461,10 +473,11 @@ if (rolesCount.count === 0) {
     'providers.view', 'providers.create', 'providers.update', 'providers.delete',
     'products.view', 'products.create', 'products.update', 'products.delete',
     'ingresos.view', 'ingresos.create', 'ingresos.update', 'ingresos.delete',
-    'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign',
+    'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign', 'inventory.createSalidas',
     'reports.view', 'reports.export', 'reports.advanced',
-    'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
+    'pedidos.create', 'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
     'vencidos.view', 'vencidos.baja', 'vencidos.devolucion',
+    'salidas.view', 'salidas.create', 'salidas.delete',
     'cotizaciones.view', 'cotizaciones.create',
     'ordenes.view', 'ordenes.create', 'ordenes.update', 'ordenes.delete', 'ordenes.approve', 'ordenes.seguimiento',
     'empresa.config',
@@ -482,10 +495,11 @@ if (rolesCount.count === 0) {
       'providers.view', 'providers.create', 'providers.update', 'providers.delete',
       'products.view', 'products.create', 'products.update', 'products.delete',
       'ingresos.view', 'ingresos.create', 'ingresos.update', 'ingresos.delete',
-      'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign',
+      'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign', 'inventory.createSalidas',
       'reports.view', 'reports.export', 'reports.advanced',
-      'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
+      'pedidos.create', 'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
       'vencidos.view', 'vencidos.baja', 'vencidos.devolucion',
+      'salidas.view', 'salidas.create', 'salidas.delete',
       'cotizaciones.view', 'cotizaciones.create',
       'ordenes.view', 'ordenes.create', 'ordenes.update', 'ordenes.delete', 'ordenes.approve', 'ordenes.seguimiento',
       'empresa.config',

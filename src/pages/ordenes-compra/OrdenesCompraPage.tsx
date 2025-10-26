@@ -39,6 +39,7 @@ import {
 } from '../../hooks/useOrdenesCompra';
 import { useProveedores, useProductos } from '../../lib/api';
 import type { OrdenCompra, EstadoOrden, CreateOrdenCompraDto } from '../../types/ordenesCompra';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 const { TextArea } = Input;
 
@@ -287,7 +288,7 @@ export default function OrdenesCompraPage() {
           rowKey="id"
           dataSource={ordenes}
           columns={columns}
-          pagination={{ pageSize: 10 }}
+          pagination={defaultPaginationConfig}
           loading={!ordenesRes}
         />
       </Card>

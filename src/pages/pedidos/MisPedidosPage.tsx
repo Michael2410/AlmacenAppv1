@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { ProductoFormItem } from '../../components/Stock/ProductoFormItem';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 const { Title, Text } = Typography;
 
@@ -268,12 +269,7 @@ const MisPedidosPage: React.FC = () => {
           dataSource={lotes}
           rowKey="loteId"
           loading={loading}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} pedidos`,
-          }}
+          pagination={defaultPaginationConfig}
         />
       </Card>
 

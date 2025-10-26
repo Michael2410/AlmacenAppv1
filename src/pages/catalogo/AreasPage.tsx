@@ -3,6 +3,7 @@ import { Card, Table, Button, Modal, Form, Input, Space, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAreas, useCreateArea, useUpdateArea, useDeleteArea } from '../../lib/api';
+import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 export default function AreasPage() {
   const { data } = useAreas();
@@ -103,7 +104,7 @@ export default function AreasPage() {
           columns={columns}
           dataSource={areas}
           rowKey="id"
-          pagination={{ pageSize: 10 }}
+          pagination={defaultPaginationConfig}
         />
       </Card>
 

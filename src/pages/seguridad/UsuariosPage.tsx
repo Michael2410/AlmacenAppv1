@@ -1,8 +1,11 @@
-import { Button, Form, Input, Modal, Select, Table, Space } from 'antd';
+import { Button, Form, Input, Modal, Select, Table, Space, Card, Typography } from 'antd';
 import type { ColumnsType, ColumnType } from 'antd/es/table';
-import { SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import { useUsers, useRoles, useCreateUser, useUpdateUser, useRemoveUser } from '../../lib/api';
 import { useState } from 'react';
+import { PlusOutlined, UserOutlined } from '@ant-design/icons';
+
+const { Title } = Typography;
 
 export default function UsuariosPage() {
   const { data } = useUsers();
@@ -55,24 +58,35 @@ export default function UsuariosPage() {
   const columns: ColumnsType<any> = [
     { title: 'Nombres', dataIndex: 'nombres', ...textFilter('nombres', 'nombres') },
     { title: 'Email', dataIndex: 'email', ...textFilter('email', 'email') },
-    { 
-      title: 'Rol', 
-      dataIndex: 'roleId', 
+    {
+      title: 'Rol',
+      dataIndex: 'roleId',
       render: (roleId: string) => getRoleName(roleId),
-      ...textFilter('roleId', 'rol') 
+      ...textFilter('roleId', 'rol')
     },
-    { title: 'Acciones', render: (_: any, r: any) => (
-      <div className="flex gap-2">
-        <Button size="small" onClick={() => { setEditing(r); setOpen(true); form.setFieldsValue({ nombres: r.nombres, email: r.email, roleId: r.roleId }); }}>Editar</Button>
-        <Button size="small" danger onClick={() => remove(r.id)}>Eliminar</Button>
-      </div>
-    ) },
+    {
+      title: 'Acciones', render: (_: any, r: any) => (
+        <div className="flex gap-2">
+          <Button size="small" icon={<EditOutlined />}  onClick={() => { setEditing(r); setOpen(true); form.setFieldsValue({ nombres: r.nombres, email: r.email, roleId: r.roleId }); }}></Button>
+          <Button size="small" icon={<DeleteOutlined />} danger onClick={() => remove(r.id)}></Button>
+        </div>
+      )
+    },
   ];
 
   return (
-    <div className="space-y-2">
-      <Button type="primary" onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo Usuario</Button>
-  <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
+    <div className="space-y-2"> 
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <Title level={4} style={{ margin: 0 }}>
+            <UserOutlined style={{ marginRight: 8 }} />
+            Gestión de Usuarios
+          </Title>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>Nuevo Usuario</Button>
+        </div>
+
+        <Table rowKey="id" dataSource={rows as any} columns={columns} pagination={{ pageSize: 10 }} />
+      </Card>
 
       <Modal title={editing ? 'Editar Usuario' : 'Nuevo Usuario'} open={open} onOk={onSave} onCancel={() => { setOpen(false); setEditing(null); }}>
         <Form form={form} layout="vertical">

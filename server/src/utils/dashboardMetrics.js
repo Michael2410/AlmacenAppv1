@@ -38,7 +38,7 @@ export function getDashboardMetrics() {
     SELECT COUNT(*) as total
     FROM pedidos
     WHERE estado = 'entregado' 
-    AND DATE(fecha) = DATE('now', 'localtime')
+    AND DATE(fechaSolicitud) = DATE('now', 'localtime')
   `).get();
 
   // 6. Ingresos de productos hoy
@@ -96,13 +96,13 @@ export function getDashboardMetrics() {
     SELECT 
       AVG(
         CAST(
-          (julianday(datetime('now', 'localtime')) - julianday(fecha)) * 24 
+          (julianday(datetime('now', 'localtime')) - julianday(fechaSolicitud)) * 24 
           AS REAL
         )
       ) as promedioHoras
     FROM pedidos
     WHERE estado = 'entregado'
-    AND DATE(fecha) >= DATE('now', '-7 days', 'localtime')
+    AND DATE(fechaSolicitud) >= DATE('now', '-7 days', 'localtime')
   `).get();
 
   // 11. Stock disponible vs asignado
@@ -180,12 +180,12 @@ export function getDashboardCharts() {
 
   const salidas = db.prepare(`
     SELECT 
-      DATE(ped.fecha) as fecha,
+      DATE(ped.fechaSolicitud) as fecha,
       SUM(ped.cantidad) as total
     FROM pedidos ped
     WHERE ped.estado = 'entregado'
-    AND DATE(ped.fecha) >= DATE('now', '-7 days', 'localtime')
-    GROUP BY DATE(ped.fecha)
+    AND DATE(ped.fechaSolicitud) >= DATE('now', '-7 days', 'localtime')
+    GROUP BY DATE(ped.fechaSolicitud)
     ORDER BY fecha
   `).all();
 
@@ -207,12 +207,12 @@ export function getDashboardCharts() {
   // 3. Actividad de pedidos por mes (últimos 6 meses)
   const pedidosPorMes = db.prepare(`
     SELECT 
-      strftime('%Y-%m', fecha) as mes,
+      strftime('%Y-%m', fechaSolicitud) as mes,
       COUNT(*) as total,
       SUM(CASE WHEN estado = 'entregado' THEN 1 ELSE 0 END) as entregados,
       SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END) as pendientes
     FROM pedidos
-    WHERE DATE(fecha) >= DATE('now', '-6 months', 'localtime')
+    WHERE DATE(fechaSolicitud) >= DATE('now', '-6 months', 'localtime')
     GROUP BY mes
     ORDER BY mes
   `).all();
@@ -291,7 +291,7 @@ export function getRecentActivity(limit = 10) {
     SELECT 
       'pedido' as tipo,
       ped.id,
-      ped.fecha as fecha,
+      ped.fechaSolicitud as fecha,
       u.nombres as usuario,
       p.nombre as producto,
       ped.cantidad,

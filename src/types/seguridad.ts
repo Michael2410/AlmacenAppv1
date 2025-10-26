@@ -29,6 +29,7 @@ export type Permission =
   | 'inventory.viewSelf'
   | 'inventory.viewAll'
   | 'inventory.assign'
+  | 'inventory.createSalidas'
   
   // Pedidos
   | 'pedidos.view'
@@ -46,6 +47,11 @@ export type Permission =
   | 'vencidos.view'
   | 'vencidos.baja'
   | 'vencidos.devolucion'
+  
+  // Salidas (Bajas de Inventario)
+  | 'salidas.view'
+  | 'salidas.create'
+  | 'salidas.delete'
   
   // Cotizaciones
   | 'cotizaciones.view'
@@ -103,7 +109,8 @@ export const PERMISSION_GROUPS = {
   'Inventario': [
     'inventory.viewSelf',
     'inventory.viewAll',
-    'inventory.assign'
+    'inventory.assign',
+    'inventory.createSalidas'
   ],
   'Pedidos': [
     'pedidos.view',
@@ -121,6 +128,11 @@ export const PERMISSION_GROUPS = {
     'vencidos.view',
     'vencidos.baja',
     'vencidos.devolucion'
+  ],
+  'Salidas de Inventario': [
+    'salidas.view',
+    'salidas.create',
+    'salidas.delete'
   ],
   'Cotizaciones': [
     'cotizaciones.view',
@@ -173,6 +185,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'inventory.viewSelf': 'Ver mi inventario personal',
   'inventory.viewAll': 'Ver todo el inventario',
   'inventory.assign': 'Asignar productos a usuarios',
+  'inventory.createSalidas': 'Registrar mis salidas de inventario',
   
   // Pedidos
   'pedidos.view': 'Ver pedidos',
@@ -190,6 +203,11 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'vencidos.view': 'Ver productos vencidos',
   'vencidos.baja': 'Dar de baja productos vencidos',
   'vencidos.devolucion': 'Devolver productos a proveedor',
+  
+  // Salidas (Bajas de Inventario)
+  'salidas.view': 'Ver salidas por daño, pérdida, etc.',
+  'salidas.create': 'Registrar salidas de inventario',
+  'salidas.delete': 'Eliminar registros de salidas',
   
   // Cotizaciones
   'cotizaciones.view': 'Ver cotizaciones',
@@ -221,10 +239,11 @@ export const PREDEFINED_ROLES: Record<string, Role> = {
       'providers.view', 'providers.create', 'providers.update', 'providers.delete',
       'products.view', 'products.create', 'products.update', 'products.delete',
       'ingresos.view', 'ingresos.create', 'ingresos.update', 'ingresos.delete',
-      'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign',
+      'inventory.viewSelf', 'inventory.viewAll', 'inventory.assign', 'inventory.createSalidas',
       'reports.view', 'reports.export', 'reports.advanced',
-      'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
+      'pedidos.create', 'pedidos.view', 'pedidos.approve', 'pedidos.reject', 'pedidos.deliver',
       'vencidos.view', 'vencidos.baja', 'vencidos.devolucion',
+      'salidas.view', 'salidas.create', 'salidas.delete',
       'cotizaciones.view', 'cotizaciones.create',
       'ordenes.view', 'ordenes.create', 'ordenes.update', 'ordenes.delete', 'ordenes.approve', 'ordenes.seguimiento',
       'empresa.config',

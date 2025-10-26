@@ -129,6 +129,10 @@ const realServices = {
     list: async () => (await api.get('/salidas')).data as ApiResult<any[]>,
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida; observacion?: string }) => (await api.post('/salidas', data)).data as ApiResult<any>,
   },
+  misSalidas: {
+    list: async () => (await api.get('/salidas/mis-salidas')).data as ApiResult<any[]>,
+    create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida; observacion?: string }) => (await api.post('/salidas/mis-salidas', data)).data as ApiResult<any>,
+  },
   pedidos: {
     list: async () => (await api.get('/pedidos/admin')).data as ApiResult<any[]>,
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida }) => (await api.post('/pedidos', data)).data as ApiResult<any>,
@@ -153,6 +157,10 @@ export const services = USE_MOCKS ? {
       mockDelay({ id: `s${Date.now()}`, ...data }),
   },
   salidas: {
+    list: async () => mockDelay([] as any[]),
+    create: async (data: any) => mockDelay({ id: `out${Date.now()}`, fecha: new Date().toISOString(), ...data }),
+  },
+  misSalidas: {
     list: async () => mockDelay([] as any[]),
     create: async (data: any) => mockDelay({ id: `out${Date.now()}`, fecha: new Date().toISOString(), ...data }),
   },
@@ -300,6 +308,7 @@ export const keys = {
   stockGeneral: ['stock','general'] as const,
   asignaciones: ['asignaciones'] as const,
   salidas: ['salidas'] as const,
+  misSalidas: ['mis-salidas'] as const,
   pedidos: ['pedidos'] as const,
 };
 
@@ -396,6 +405,14 @@ export function useCrearSalida() {
   return useMutation({
     mutationFn: services.salidas.create,
     onSuccess: () => { qc.invalidateQueries({ queryKey: keys.salidas }); qc.invalidateQueries({ queryKey: keys.stockMio }); },
+  });
+}
+export function useMisSalidas() { return useQuery({ queryKey: keys.misSalidas, queryFn: services.misSalidas.list }); }
+export function useCrearMiSalida() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: services.misSalidas.create,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.misSalidas }); qc.invalidateQueries({ queryKey: keys.stockMio }); },
   });
 }
 export function usePedidos() { return useQuery({ queryKey: keys.pedidos, queryFn: services.pedidos.list }); }
