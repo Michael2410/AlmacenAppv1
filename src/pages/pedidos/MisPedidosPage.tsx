@@ -404,7 +404,7 @@ const MisPedidosPage: React.FC = () => {
             >
               Cancelar
             </Button>
-            <Button type="primary" htmlType="submit">🚀 Enviar Solicitud</Button>
+            <Button type="primary" htmlType="submit">Enviar Solicitud</Button>
           </div>
         </Form>
       </Modal>

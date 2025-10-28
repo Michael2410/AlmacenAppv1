@@ -646,12 +646,12 @@ app.put('/api/pedidos/:id/estado', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // CRUD de Áreas
-app.get('/api/areas', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/areas', authMiddleware, requirePermission('areas.manage'), (req, res) => {
   const areas = db.prepare('SELECT * FROM areas').all();
   res.json({ success: true, data: areas });
 });
 
-app.post('/api/areas', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/areas', authMiddleware, requirePermission('areas.manage'), (req, res) => {
   const { nombre } = req.body;
   if (!nombre) return res.status(400).json({ success: false, message: 'Nombre es requerido' });
   
@@ -690,12 +690,12 @@ app.delete('/api/areas/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Ubicaciones endpoints
-app.get('/api/ubicaciones', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/ubicaciones', authMiddleware, requirePermission('ubicaciones.manage'), (req, res) => {
   const ubicaciones = db.prepare('SELECT * FROM ubicaciones').all();
   res.json({ success: true, data: ubicaciones });
 });
 
-app.post('/api/ubicaciones', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/ubicaciones', authMiddleware, requirePermission('ubicaciones.manage'), (req, res) => {
   const { nombre } = req.body;
   if (!nombre) return res.status(400).json({ success: false, message: 'Nombre es requerido' });
   
@@ -732,12 +732,12 @@ app.delete('/api/ubicaciones/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // Unidades de medida endpoints
-app.get('/api/unidades-medida', authMiddleware, requireAdmin, (req, res) => {
+app.get('/api/unidades-medida', authMiddleware, requirePermission('unidades.manage'), (req, res) => {
   const unidades = db.prepare('SELECT * FROM unidades_medida ORDER BY nombre').all();
   res.json({ success: true, data: unidades });
 });
 
-app.post('/api/unidades-medida', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/unidades-medida', authMiddleware, requirePermission('unidades.manage'), (req, res) => {
   const { nombre, simbolo } = req.body;
   if (!nombre || !simbolo) return res.status(400).json({ success: false, message: 'Nombre y símbolo son requeridos' });
   
@@ -2017,6 +2017,38 @@ app.delete('/api/salidas/:id', authMiddleware, requireAdmin, (req, res) => {
 });
 
 // ====== ENDPOINTS DE SALIDAS PARA TRABAJADORES ======
+
+// Obtener productos del inventario personal del usuario
+app.get('/api/inventario/mis-productos', authMiddleware, (req, res) => {
+  console.log('🎯 GET /api/inventario/mis-productos - Usuario:', req.user.email);
+  try {
+    const userId = req.user.id;
+    
+    // Obtener productos únicos del inventario personal del usuario (user_stock)
+    const query = `
+      SELECT DISTINCT
+        p.id,
+        p.nombre,
+        p.marca
+      FROM user_stock us
+      INNER JOIN productos p ON us.productoId = p.id
+      WHERE us.usuarioId = ?
+      ORDER BY p.nombre
+    `;
+    
+    const productos = db.prepare(query).all(userId);
+    
+    console.log('📦 Encontrados', productos.length, 'productos en inventario personal');
+    
+    res.json({ 
+      success: true, 
+      data: productos 
+    });
+  } catch (error) {
+    console.error('❌ Error al obtener mis productos:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // Listar mis salidas (solo del usuario autenticado)
 app.get('/api/salidas/mis-salidas', authMiddleware, (req, res) => {

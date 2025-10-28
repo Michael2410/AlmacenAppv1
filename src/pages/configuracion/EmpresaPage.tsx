@@ -60,14 +60,6 @@ export default function EmpresaPage() {
         Configure los datos de su empresa que aparecerán en las cotizaciones y documentos
       </Text>
 
-      <Alert
-        message="Información"
-        description="Ingresar los datos de su empresa."
-        type="info"
-        showIcon
-        className="mb-6"
-      />
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Logo */}
         <Card title="Logo de Empresa" className="lg:col-span-1">

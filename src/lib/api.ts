@@ -133,6 +133,9 @@ const realServices = {
     list: async () => (await api.get('/salidas/mis-salidas')).data as ApiResult<any[]>,
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida; observacion?: string }) => (await api.post('/salidas/mis-salidas', data)).data as ApiResult<any>,
   },
+  misProductos: {
+    list: async () => (await api.get('/inventario/mis-productos')).data as ApiResult<any[]>,
+  },
   pedidos: {
     list: async () => (await api.get('/pedidos/admin')).data as ApiResult<any[]>,
     create: async (data: { productoId: string; cantidad: number; unidad: UnidadMedida }) => (await api.post('/pedidos', data)).data as ApiResult<any>,
@@ -163,6 +166,9 @@ export const services = USE_MOCKS ? {
   misSalidas: {
     list: async () => mockDelay([] as any[]),
     create: async (data: any) => mockDelay({ id: `out${Date.now()}`, fecha: new Date().toISOString(), ...data }),
+  },
+  misProductos: {
+    list: async () => mockDelay([] as any[]),
   },
   users: {
     list: async () => mockDelay(users),
@@ -309,6 +315,7 @@ export const keys = {
   asignaciones: ['asignaciones'] as const,
   salidas: ['salidas'] as const,
   misSalidas: ['mis-salidas'] as const,
+  misProductos: ['mis-productos'] as const,
   pedidos: ['pedidos'] as const,
 };
 
@@ -408,6 +415,7 @@ export function useCrearSalida() {
   });
 }
 export function useMisSalidas() { return useQuery({ queryKey: keys.misSalidas, queryFn: services.misSalidas.list }); }
+export function useMisProductos() { return useQuery({ queryKey: keys.misProductos, queryFn: services.misProductos.list }); }
 export function useCrearMiSalida() {
   const qc = useQueryClient();
   return useMutation({
