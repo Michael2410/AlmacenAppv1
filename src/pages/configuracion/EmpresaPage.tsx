@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Form, Input, Button, Upload, Image, Space, Typography, Spin, Alert } from 'antd';
+import { Card, Form, Input, Button, Upload, Image, Space, Typography, Spin } from 'antd';
 import { UploadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useEmpresaConfig, useUpdateEmpresaConfig, useUploadLogo } from '../../hooks/useEmpresaConfig';
 

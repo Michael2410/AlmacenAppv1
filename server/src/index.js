@@ -2675,7 +2675,7 @@ app.post('/api/ordenes-compra', authMiddleware, requireAdmin, (req, res) => {
     });
     
     const impuestos = subtotal * 0.18; // IGV 18%
-    const total = subtotal - impuestos;
+    const total = subtotal;
     
     const ordenId = `ord${Date.now()}`;
     const fechaOrden = new Date().toISOString().split('T')[0];

@@ -2,7 +2,7 @@ import { Button, Form, Input, Modal, Table, Card } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useProveedores, useCreateProveedor, useRemoveProveedor, useUpdateProveedor } from '../../lib/api';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { defaultPaginationConfig } from '../../hooks/useTablePagination';
 
 export default function ProveedoresListPage() {

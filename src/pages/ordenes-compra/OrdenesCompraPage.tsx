@@ -143,7 +143,7 @@ export default function OrdenesCompraPage() {
   const calcularTotales = () => {
     const subtotal = productosOrden.reduce((sum, p) => sum + p.subtotal, 0);
     const impuestos = subtotal * 0.18;
-    const total = subtotal - impuestos;
+    const total = subtotal;
     return { subtotal, impuestos, total };
   };
 

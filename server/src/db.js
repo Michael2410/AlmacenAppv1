@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 
-const db = new Database('almacen.db');
+const db = new Database('../data/almacen.db');
 
 // Habilitar foreign keys
 db.pragma('foreign_keys = ON');

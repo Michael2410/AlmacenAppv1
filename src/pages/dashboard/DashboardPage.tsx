@@ -1,4 +1,4 @@
-import { Row, Col, Typography, Divider } from 'antd';
+import { Row, Col } from 'antd';
 import {
   ShoppingCartOutlined,
   WarningOutlined,
@@ -17,7 +17,7 @@ import ExpiringProductsModal from '../../components/Stock/ExpiringProductsModal'
 import { useDashboardMetrics } from '../../hooks/useDashboard';
 import { useProductosProximosVencer } from '../../hooks/useStockDisponible';
 
-const { Title } = Typography;
+
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardMetrics();

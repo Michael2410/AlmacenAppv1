@@ -476,69 +476,6 @@ npm install
 # Verificar la URL de la API en el frontend
 ```
 
-## 📝 Changelog
-
-### v2.2.1 - Integración Órdenes → Ingresos ✅ (Actual - Oct 2025)
-**Integración completa: Órdenes de Compra → Ingresos de Inventario**
-
-#### Nuevas Funcionalidades
-- ✅ **Botón "Ingresar"** en órdenes con estado ENTREGADA
-- ✅ **Pre-carga automática** de productos desde la orden de compra
-- ✅ **Precio como subtotal**: Usa cantidad × precio_unitario (no precio unitario)
-- ✅ **Ubicación automática**: Se toma del producto (no editable por usuario)
-- ✅ **Área automática**: Se toma del producto (no editable por usuario)
-- ✅ **Cantidad disponible**: Se inicializa automáticamente con cantidad ingresada
-- ✅ **Campos editables**: Fecha vencimiento, fecha factura, serie factura
-- ✅ **Modal dedicado**: ModalIngresarOrden con formulario simplificado
-- ✅ **Auditoría completa**: Registra quién creó el ingreso desde qué orden
-
-#### Backend (1 endpoint nuevo)
-- ✅ POST `/api/ordenes-compra/:id/crear-ingreso` - Crear ingresos desde orden ENTREGADA
-  - Valida que la orden esté en estado ENTREGADA
-  - Crea un ingreso por cada producto en la orden
-  - Pre-carga: productoId, proveedorId, cantidad, precio (subtotal), fechas opcionales
-  - Usa ubicación y área del producto automáticamente
-  - Inicializa `cantidad_disponible` con el valor de `cantidad`
-  - Agrega seguimiento a la orden
-  - Registra auditoría completa
-
-#### Frontend (Hook + Modal)
-- ✅ Hook `useCrearIngresoDesdeOrden()` en `useOrdenesCompra.ts`
-- ✅ Modal `ModalIngresarOrden` integrado en `OrdenesCompraPage`
-- ✅ Botón visible solo para órdenes ENTREGADAS
-- ✅ Formulario con 3 campos por producto:
-  - Fecha Vencimiento (DatePicker)
-  - Fecha Factura (DatePicker)
-  - Serie Factura (Input)
-
-#### Flujo de Trabajo
-1. Usuario marca orden como ENTREGADA
-2. Aparece botón "Ingresar" en la fila
-3. Click en "Ingresar" abre modal con productos pre-cargados
-4. Usuario completa campos opcionales (fechas, serie factura)
-5. Sistema crea ingresos automáticamente:
-   - Toma precio como subtotal (cantidad × precio_unitario)
-   - Usa ubicación del producto
-   - Usa área del producto
-   - Inicializa cantidad_disponible = cantidad
-6. Actualiza seguimiento de la orden
-7. Invalida caché de ingresos y órdenes
-
-#### Mejoras de UX/UI
-- ✅ Pre-visualización de datos: Muestra proveedor, fecha orden, productos
-- ✅ Cálculo visible: Precio total = cantidad × precio unitario
-- ✅ Layout optimizado: 3 campos en una fila (compacto)
-- ✅ Validación automática: No permite ingresar si no está ENTREGADA
-- ✅ Mensajes de éxito con detalle de productos ingresados
-- ✅ Icono inbox en botón "Ingresar"
-
-#### Ventajas del Sistema
-- 🚀 **Automatización**: 90% de campos pre-llenados
-- 🎯 **Precisión**: Usa precios exactos de la orden de compra
-- ⚡ **Rapidez**: Ingreso de múltiples productos en un click
-- 🔒 **Trazabilidad**: Link directo orden → ingresos
-- 📊 **Consistencia**: Datos uniformes entre órdenes e ingresos
-
 ## 👨‍💻 Desarrollo
 
 ### Agregar nueva funcionalidad
