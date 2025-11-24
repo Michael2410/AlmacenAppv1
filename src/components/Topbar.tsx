@@ -45,7 +45,7 @@ export default function Topbar() {
         }}
         onClick={() => navigate("/")}
       >
-        <span style={{ color: "#1677ff" }}>Stok</span>
+        <span style={{ color: "#1677ff" }}>Stock</span>
         <span style={{ color: "#001529" }}>Up</span>
       </Typography.Title>
 

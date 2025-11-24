@@ -126,7 +126,7 @@ export default function ActivityTimeline() {
     
     // Formato antiguo: fallback desde pedidos/ingresos
     const isPedido = activity.tipo === 'pedido';
-    const action = 'CREATE'; // Ambos tipos son operaciones de creación
+    const action = 'CREATE'; 
     const color = isPedido ? 'blue' : 'green';
     
     return {

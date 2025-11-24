@@ -49,7 +49,7 @@ export default function MainLayout() {
         }}
       >
         <div className="text-white text-center py-4 font-semibold text-lg border-b border-gray-700">
-          StokUp
+          StockUp
         </div>
 
         <SidebarNav />
